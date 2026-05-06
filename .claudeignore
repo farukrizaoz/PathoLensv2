@@ -1,0 +1,48 @@
+# Files Claude Code should NOT load into context (saves tokens)
+
+# Raw data
+data/raw/
+data/processed/
+data/external/
+
+# WSI files (gigapixel)
+*.svs
+*.tif
+*.tiff
+*.ndpi
+*.mrxs
+
+# Embedding caches
+*.h5
+*.hdf5
+
+# Model checkpoints
+checkpoints/
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+
+# Experiment tracking
+wandb/
+mlruns/
+runs/
+
+# Caches
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Logs
+*.log
+logs/
+
+# Outputs
+results/
+outputs/
+
+# Notebook outputs
+*.ipynb_checkpoints

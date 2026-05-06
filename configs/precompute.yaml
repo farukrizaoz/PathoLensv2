@@ -1,0 +1,30 @@
+# Embedding precompute config
+# Used by: uv run python -m patholens.data.precompute_embeddings --config configs/precompute.yaml
+
+# Data paths (override with --wsi-dir, --output-dir CLI flags)
+wsi_dir: data/raw/tcga_brca
+output_dir: data/processed/embeddings/tcga_brca
+
+# Patch extraction
+patch_size: 448            # CONCHv1.5 + TITAN required
+magnification: 20
+tissue_ratio_threshold: 0.5
+batch_size: 64             # CONCH forward batch (24GB VRAM)
+
+# Models (HF gated)
+conch_repo: MahmoodLab/conchv1_5
+titan_repo: MahmoodLab/TITAN
+
+# Tissue segmentation
+otsu_thumbnail_mag: 1.25
+sat_threshold: 8
+min_tissue_area_pct: 0.05  # if <5% tissue, fallback to GrandQC
+
+# Storage
+hdf5_compression: gzip
+hdf5_compression_opts: 4
+embeddings_dtype: float16  # save space, no quality loss for embeddings
+
+# Streaming mode (saves disk space on RunPod)
+streaming: false           # set true if disk constrained
+delete_wsi_after: false    # only if streaming=true

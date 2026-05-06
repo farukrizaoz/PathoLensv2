@@ -1,0 +1,62 @@
+# Caption-only baseline (no grounding loss).
+# Establishes BLEU/ROUGE baseline before adding grounding.
+
+run_name_prefix: baseline
+
+# Data
+embeddings_dir: data/processed/embeddings/tcga_brca
+instruction_train: data/processed/slideinstruction/train.json
+instruction_val: data/processed/slideinstruction/val.json
+max_vision_tokens: 1024
+
+# Model
+llm_repo: meta-llama/Llama-3.2-3B-Instruct
+vision_dim: 768            # TITAN slide token dim
+llm_hidden_dim: 3072       # Llama-3.2-3B
+load_in_4bit: true
+
+# LoRA
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  bias: none
+
+# Loss weights (baseline = caption only)
+loss:
+  lambda_grounding: 0.0
+  lambda_faithfulness: 0.0
+
+# Optimizer
+optimizer:
+  name: adamw
+  lr_adapter: 1.0e-4
+  lr_lora: 5.0e-5
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+
+# Scheduler
+scheduler:
+  name: cosine
+  warmup_steps: 100
+
+# Training
+training:
+  epochs: 3
+  batch_size: 1
+  gradient_accumulation: 16
+  mixed_precision: bf16
+  gradient_checkpointing: true
+  max_grad_norm: 1.0
+  eval_every: 200
+  save_every: 500
+
+# Output
+output_dir: checkpoints
+
+# Logging
+wandb:
+  project: patholens-vlm
+  tags: [baseline, caption-only]
+log_every: 10

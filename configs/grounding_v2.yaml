@@ -1,0 +1,76 @@
+# Grounding v2: CAMELYON16 explicit pixel-mask supervision.
+# Stronger ground truth (real expert annotations) but smaller training pool.
+
+run_name_prefix: grounded_v2
+
+# Data — adds CAMELYON16 train slides
+embeddings_dir: data/processed/embeddings  # both tcga_brca/ and camelyon16/
+instruction_train: data/processed/slideinstruction/train.json
+camelyon_train_slides: data/processed/embeddings/camelyon16/train_subset.json
+camelyon_patch_masks: data/processed/camelyon_patch_masks
+instruction_val: data/processed/slideinstruction/val.json
+max_vision_tokens: 1024
+
+# Mix ratio: 70% TCGA, 30% CAMELYON in each batch
+data_mixing:
+  tcga_weight: 0.7
+  camelyon_weight: 0.3
+
+# Model (same)
+llm_repo: meta-llama/Llama-3.2-3B-Instruct
+vision_dim: 768
+llm_hidden_dim: 3072
+load_in_4bit: true
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  bias: none
+
+# Loss (same lambdas, different supervision source)
+loss:
+  lambda_grounding: 0.3
+  lambda_faithfulness: 0.1
+
+grounding:
+  source: hybrid
+  conch_repo: MahmoodLab/conchv1_5
+  # For CAMELYON samples: use pixel mask
+  # For TCGA samples: use CONCH pseudo
+  cosine_temperature: 0.1
+
+attention_extraction:
+  layers: [12, 14, 16, 18]
+  heads: "all"
+
+optimizer:
+  name: adamw
+  lr_adapter: 1.0e-4
+  lr_lora: 5.0e-5
+  weight_decay: 0.01
+
+scheduler:
+  name: cosine
+  warmup_steps: 100
+
+training:
+  epochs: 3
+  batch_size: 1
+  gradient_accumulation: 16
+  mixed_precision: bf16
+  gradient_checkpointing: true
+  max_grad_norm: 1.0
+  eval_every: 200
+  save_every: 500
+
+# Init from grounding v1 (further refinement)
+init_from: checkpoints/grounded_v1_latest
+
+output_dir: checkpoints
+
+wandb:
+  project: patholens-vlm
+  tags: [grounded, v2, camelyon-supervised]
+log_every: 10

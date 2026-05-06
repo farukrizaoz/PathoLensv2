@@ -1,0 +1,140 @@
+[project]
+name = "patholens-vlm"
+version = "0.1.0"
+description = "Spatially-grounded VLM for whole-slide breast cancer histopathology report generation"
+authors = [
+    { name = "Faruk Rıza Öz", email = "faruk.oz@itu.edu.tr" },
+    { name = "Emir Arda Eker", email = "arda.eker@itu.edu.tr" },
+]
+requires-python = ">=3.11,<3.13"
+readme = "README.md"
+license = { text = "Research-only" }
+
+dependencies = [
+    # Core ML
+    "torch>=2.5.0",
+    "torchvision>=0.20.0",
+    "transformers>=4.46.0",
+    "accelerate>=1.1.0",
+    "peft>=0.13.0",
+    "datasets>=3.1.0",
+    "huggingface-hub>=0.26.0",
+    "safetensors>=0.4.5",
+    "einops>=0.8.0",
+    "timm>=1.0.11",
+
+    # WSI handling (openslide system lib must be installed separately)
+    "openslide-python>=1.4.0",
+    "opencv-python-headless>=4.10.0",
+    "h5py>=3.12.0",
+    "Pillow>=11.0.0",
+
+    # Data utilities
+    "numpy>=1.26.0,<2.0.0",  # Pinned <2 for openslide/scikit-image compat
+    "pandas>=2.2.0",
+    "scipy>=1.14.0",
+    "scikit-learn>=1.5.0",
+    "scikit-image>=0.24.0",
+
+    # Config & CLI
+    "pyyaml>=6.0",
+    "omegaconf>=2.3.0",
+    "typer>=0.13.0",
+    "rich>=13.9.0",
+    "python-dotenv>=1.0.0",
+
+    # Experiment tracking
+    "wandb>=0.18.0",
+
+    # Evaluation (HF evaluate replaces pycocoevalcap; no Java dep)
+    "evaluate>=0.4.3",
+    "rouge-score>=0.1.2",
+    "nltk>=3.9.0",
+    "sacrebleu>=2.4.0",
+
+    # FHIR DiagnosticReport templating
+    "fhir.resources>=8.0.0",
+
+    # Sentence segmentation for grounding extraction
+    "spacy>=3.7.0",
+]
+
+[project.optional-dependencies]
+# RunPod GPU env (CUDA-only packages)
+gpu = [
+    "bitsandbytes>=0.44.0",  # Linux/CUDA only, no macOS
+    "flash-attn>=2.6.0; sys_platform == 'linux'",  # optional speedup
+]
+
+dev = [
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
+    "ipykernel>=6.29.0",
+    "jupyterlab>=4.3.0",
+    "matplotlib>=3.9.0",
+    "seaborn>=0.13.0",
+]
+
+[project.scripts]
+patholens = "patholens.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/patholens"]
+
+# ─────────────────────────────────────────────────────────────
+# Code quality
+# ─────────────────────────────────────────────────────────────
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    "notebooks/",
+    "data/",
+    "checkpoints/",
+    "wandb/",
+    ".venv/",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "C4",  # comprehensions
+]
+ignore = [
+    "E501",  # line length handled by formatter
+    "B008",  # function calls in arg defaults (typer pattern)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+exclude = ["notebooks/", "data/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: marks tests requiring GPU",
+]
