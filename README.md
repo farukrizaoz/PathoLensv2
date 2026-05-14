@@ -10,131 +10,259 @@ Faruk Rıza Öz · Emir Arda Eker · Supervisor: Prof. Dr. Behçet Uğur Töreyi
 
 ## What this is
 
-A vision-language model that takes a whole-slide image (WSI) of breast cancer tissue and produces a structured pathology report **where every clinical sentence is spatially grounded** to the slide region it came from. Output: HL7 FHIR-compatible DiagnosticReport JSON + per-sentence attention heatmaps.
+A vision-language model that takes a whole-slide image (WSI) of breast cancer tissue and produces a structured pathology report **where every clinical sentence is spatially grounded** to the slide region it originates from.
 
-Built on top of [TITAN](https://huggingface.co/MahmoodLab/TITAN) (MahmoodLab's slide-level pathology foundation model) and [Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct), with a novel **grounding loss** that supervises text-to-vision attention during fine-tuning.
+Built on [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5) (frozen patch encoder) + [Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) + LoRA, with a grounding loss that supervises text-to-vision attention during fine-tuning against BCSS semantic segmentation masks and CONCH v1 pseudo-GT.
 
 ## Why grounding matters
 
-Existing pathology VLMs (PathChat, SlideChat, Quilt-LLaVA) produce plausible captions and answer VQA but cannot guarantee that "this clinical claim came from this region of the slide." Grounding-aware approaches have appeared in radiology this year (MedGround Jan 2026, MedMO Feb 2026) but **WSI-scale histopathology grounding remains an open problem**. We close that gap.
+Existing pathology VLMs (PathChat, SlideChat, Quilt-LLaVA) produce plausible captions but cannot guarantee "this clinical claim came from this slide region." Grounding-aware approaches exist in radiology (MedGround 2026) but WSI-scale histopathology grounding is an open problem. PathoLens-VLM closes that gap.
+
+---
 
 ## Quick Start
 
+### Requirements
+
+- Python 3.11+, uv package manager
+- PyTorch 2.5+ (CPU for local dev; CUDA 12.4 on RunPod)
+- HuggingFace account with access to three gated models (see below)
+
+### Install
+
 ```bash
-# 1. Clone and install
 git clone <repo-url>
-cd patholens-vlm
-make install-dev
-
-# 2. Set up environment
+cd patholens
+make install         # uv venv + dependencies + pre-commit hooks
 cp .env.example .env
-# Edit .env: HF_TOKEN, WANDB_API_KEY, RUNPOD_HOST
-
-# 3. Smoke tests (no GPU, no data)
-make test
-
-# 4. Get HF gated access (one-time, see docs/MODEL_ACCESS.md)
-#    - MahmoodLab/conchv1_5
-#    - MahmoodLab/TITAN
-#    - meta-llama/Llama-3.2-3B-Instruct
-
-# 5. Local dev → RunPod training cycle
-make sync-up                    # local code → RunPod
-# On RunPod:
-make precompute                 # one-time, ~10h
-make train-baseline             # ~12h
-make train-grounded             # ~18h
-make eval                       # full eval suite
-make sync-down                  # results → local
+# Edit .env: HF_TOKEN=hf_..., WANDB_API_KEY=..., RUNPOD_HOST=...
 ```
+
+### Smoke tests (no GPU, no data required)
+
+```bash
+make test
+```
+
+Runs `tests/test_smoke.py`, `tests/test_grounding_targets.py`, and `tests/test_train_smoke.py`. All tests pass without HuggingFace dependencies or GPU — the LLM is replaced by a mock in the train smoke tests.
+
+### HuggingFace gated model access (one-time)
+
+Three models require institutional HF access approval. See `docs/MODEL_ACCESS.md` for the request links and expected approval time (~1–3 business days):
+
+- `MahmoodLab/conchv1_5` (CONCHv1.5 patch encoder)
+- `MahmoodLab/TITAN` (TITAN slide encoder — precomputed and stored but not in training loop)
+- `meta-llama/Llama-3.2-3B-Instruct`
+
+---
 
 ## Architecture
 
 ```
-WSI (gigapixel, .svs)
-  └─ Tissue segmentation (Otsu / GrandQC fallback)
-     └─ Patch extraction (448×448 @20×, ~3K-7K patches/slide)
-        └─ CONCHv1.5 patch encoder (frozen, 768-dim)
-           └─ TITAN slide encoder (frozen, slide-level transformer)
-              └─ Linear adapter (trainable)
-                 └─ Llama-3.2-3B-Instruct + LoRA r=16 (trainable)
-                    ├─ Generated structured report (text)
-                    ├─ Self-attention extraction (text→vision tokens)
-                    │  → Per-sentence grounding heatmap
-                    └─ FHIR DiagnosticReport JSON
+WSI (.svs, ~50K × 50K pixels)
+  └─ Tissue segmentation (Otsu @1.25× / GrandQC fallback)
+     └─ Patch extraction (448×448 @20×, ~3K–7K patches/slide)
+        └─ CONCHv1.5 ViT-L  [FROZEN, 768-dim]
+           │  patch_embeddings_v15: (N_patches, 768)
+           │
+           │  ← These are the LLM vision tokens (1:1 with grounding GT)
+           ▼
+        Linear Adapter  [TRAINABLE, 768→3072, ~5M params]
+           ▼
+        Llama-3.2-3B-Instruct + LoRA r=16  [TRAINABLE, ~10M params]
+           │
+           │  Input: [adapter_tokens (N_v)] + [instruction+response (T)]
+           │  (LLaVA-style prepend, causal self-attention over all tokens)
+           │
+           ├─▶ Generated structured report
+           └─▶ text_to_vision_attn (B, T, N_v)  ← grounding signal
+                 extracted from Llama layer 14, averaged over all heads
 ```
 
-Frozen: ~330M parameters. Trainable: ~15M (adapter + LoRA).
+**Key architectural decision:** CONCHv1.5 patch embeddings (not TITAN slide tokens) are used directly as LLM vision tokens. This ensures 1:1 correspondence between LLM attention weights and patch-level grounding GT. TITAN is precomputed and stored in HDF5 for potential future use.
 
-See `docs/ARCHITECTURE.md` for design rationale.
+**Trainable:** adapter (~5M) + LoRA (~10M) = ~15M total. Frozen: CONCHv1.5 (304M), Llama base.
 
-## Datasets
+See `docs/ARCHITECTURE.md` for full design rationale and all design decisions.
 
-| Dataset            | Use                               | Size                         |
-| ------------------ | --------------------------------- | ---------------------------- |
-| TCGA-BRCA (subset) | Main fine-tuning                  | 150 slides                   |
-| CAMELYON16 (test)  | Pointing-game ground truth        | ~100 slides + pixel masks    |
-| SlideInstruction   | Instruction-following data (open) | 4.2K WSI captions + 176K VQA |
-
-See `docs/DATA.md` for download and preprocessing.
+---
 
 ## Training
 
-Three losses combined:
+### Five Ablation Configs
 
-1. **Caption loss** — standard LM cross-entropy
-2. **Grounding loss** — text-to-vision attention KL-divergence against CONCHv1.5 text-image cosine similarity (pseudo-supervision on TCGA, explicit supervision on CAMELYON)
-3. **Faithfulness regularization** — attention concentration penalty (each sentence attends to focused subset of slide tokens)
+| Config file | λ_g | Grounding source | Loss type |
+|---|---|---|---|
+| `caption_baseline.yaml` | 0 | — | — |
+| `grounding_v1.yaml` | 0.3 | CONCH v1 pseudo-GT | KL divergence |
+| `grounding_v1_cosine.yaml` | 0.3 | CONCH v1 pseudo-GT | cosine distance |
+| `grounding_v2.yaml` | 0.3 | BCSS + CONCH hybrid | KL divergence |
+| `grounding_v2_cosine.yaml` | 0.3 | BCSS + CONCH hybrid | cosine distance |
 
-Configs: `configs/caption_baseline.yaml`, `configs/grounding_v1.yaml`, `configs/grounding_v2.yaml`.
+**v1 configs** use CONCH v1 zero-shot pseudo-GT (no additional data required beyond embeddings). **v2 configs** add BCSS patch-level segmentation masks where available (151 TCGA-BRCA slides, CC0 license).
+
+### Loss Composition
+
+```
+L_total = L_caption + λ_g · L_grounding + λ_f · L_faithfulness
+
+L_caption     = cross-entropy on response tokens (instruction masked with -100)
+L_grounding   = KL(log_softmax(attn), gt_dist)   OR   1 - cosine_sim(attn, gt_dist)
+L_faithfulness = mean entropy of per-sentence attention distributions
+```
+
+### Training Commands
+
+```bash
+# On RunPod:
+make precompute                                        # CONCHv1.5 + CONCH v1 + TITAN embeddings (~10h)
+make bcss-preprocess                                   # BCSS patch masks (~3h)
+
+uv run python -m patholens.training.train \
+    --config configs/grounding_v2.yaml \
+    --run-name grounded_v2_run1                       # ~15h per run
+
+make eval                                              # full evaluation suite
+```
+
+Or via the `make` targets:
+```bash
+make train-baseline
+make train-grounded   # uses grounding_v2.yaml by default
+```
+
+### Optimizer
+
+AdamW with separate learning rates:
+- Linear adapter: `lr = 1e-4`
+- LoRA parameters: `lr = 5e-5`
+
+---
+
+## Data
+
+| Dataset | Role | Slides |
+|---|---|---|
+| TCGA-BRCA (BCSS-overlap) | Training + in-domain eval | 151 |
+| BCSS annotations | Per-class grounding GT | 151 (CC0) |
+| SlideInstruction | Instruction captions (GPT-4 structured) | 151 (filtered) |
+| CAMELYON16 | Pointing-game evaluation only | ~100 |
+
+All 151 training slides are TCGA-BRCA cases for which BCSS pixel-level ROI annotations exist (same SVS files, exact overlap). See `docs/DATA.md` for download instructions, preprocessing pipeline, and HDF5 schema.
+
+---
 
 ## Evaluation
 
-- **Pointing game** (CAMELYON16): does "metastasis" sentence attention overlap with pixel-level tumor mask?
-- **Intervention test**: mask top-K attention patches → does sentence change?
-- **Caption metrics**: BLEU, ROUGE-L, METEOR vs ground-truth reports
-- **Faithfulness score**: aligned attention concentration vs random baseline
+```bash
+make eval   # runs all four eval modules
+```
+
+| Metric | Module | Ground Truth |
+|---|---|---|
+| BLEU-4, ROUGE-L | `evaluation/caption_metrics.py` | SlideInstruction captions |
+| Pointing Game @5, @10 | `evaluation/pointing_game.py` | CAMELYON16 tumor masks |
+| Faithfulness (intervention) | `evaluation/intervention_test.py` | Top-K patch masking |
+| Concept-F1 (grade/subtype/margin/ER/PR/HER2) | `evaluation/concept_f1.py` | TCGA clinical TSV |
+
+Results are logged to `docs/EXPERIMENTS.md` via `/log-experiment`.
+
+---
 
 ## Project Structure
 
 ```
-patholens-vlm/
-├── CLAUDE.md                # Claude Code session context
-├── README.md
-├── pyproject.toml           # uv package config
-├── Makefile                 # All critical commands
-├── docs/                    # Architecture, data, roadmap, etc.
-├── src/patholens/           # Python package
-│   ├── data/                # WSI ingestion, datasets
-│   ├── models/              # Adapter, grounded VLM, TITAN wrapper
-│   ├── training/            # Losses, trainer, train entrypoint
-│   ├── evaluation/          # Pointing game, intervention test
-│   ├── reporting/           # FHIR DiagnosticReport templating
-│   └── utils/               # Logging, config, IO
-├── scripts/                 # Setup, download, sync
-├── configs/                 # YAML training configs
-├── notebooks/               # Exploration, visualization
-├── tests/                   # pytest smoke tests
-└── .claude/skills/          # Custom slash commands (token-optimized)
+patholens/
+├── src/patholens/
+│   ├── data/
+│   │   ├── wsi_preprocessing.py      # Otsu/GrandQC tissue seg, patch extraction
+│   │   ├── precompute_embeddings.py  # CONCHv1.5 + CONCH v1 + TITAN → HDF5
+│   │   ├── bcss_loader.py            # BCSS download, rasterize, → HDF5 masks
+│   │   ├── camelyon_xml_to_mask.py   # CAMELYON16 XML → patch-level binary mask
+│   │   ├── conch_pseudo_gt.py        # PseudoGTCache: disk-backed (slide, sentence) → dist
+│   │   └── dataset.py                # GroundingSlideDataset, grounding_collate_fn
+│   ├── models/
+│   │   ├── adapter.py                # LinearAdapter (768 → 3072)
+│   │   ├── conch_encoder.py          # CONCHv1.5 + CONCH v1 loaders
+│   │   ├── titan_encoder.py          # TITAN slide encoder wrapper
+│   │   └── grounded_vlm.py           # GroundedVLM: adapter + Llama + LoRA
+│   ├── training/
+│   │   ├── losses.py                 # CombinedLoss (caption + grounding + faithfulness)
+│   │   ├── grounding_targets.py      # build_target(): BCSS/pseudo-GT router
+│   │   └── train.py                  # PathoTrainer (HF Trainer subclass), CLI entry point
+│   ├── evaluation/
+│   │   ├── pointing_game.py          # PG@K on CAMELYON16
+│   │   ├── intervention_test.py      # Faithfulness via top-K patch masking
+│   │   ├── caption_metrics.py        # BLEU/ROUGE
+│   │   └── concept_f1.py             # Per-concept precision/recall/F1
+│   └── utils/
+│       ├── config.py                 # OmegaConf loader
+│       └── logging.py                # setup_logger
+├── tests/
+│   ├── test_smoke.py                 # Import, adapter, loss, config tests
+│   ├── test_grounding_targets.py     # BCSS routing and pseudo-GT fallback logic
+│   └── test_train_smoke.py           # GroundedVLM + training E2E (MockLLM, no GPU)
+├── configs/
+│   ├── caption_baseline.yaml
+│   ├── grounding_v1.yaml             # CONCH pseudo-GT, KL loss
+│   ├── grounding_v1_cosine.yaml      # CONCH pseudo-GT, cosine loss
+│   ├── grounding_v2.yaml             # BCSS hybrid, KL loss  ← recommended
+│   └── grounding_v2_cosine.yaml      # BCSS hybrid, cosine loss
+├── docs/
+│   ├── ARCHITECTURE.md               # Design decisions, loss formulation, risks
+│   ├── DATA.md                       # Download instructions, HDF5 schema, splits
+│   ├── ROADMAP.md                    # 38-day week-by-week plan
+│   ├── EXPERIMENTS.md                # Training run results (auto-updated)
+│   ├── REMOTE_WORKFLOW.md            # RunPod setup and sync procedures
+│   └── MODEL_ACCESS.md               # HuggingFace gated model access
+├── scripts/
+│   ├── 01_download_tcga.sh
+│   ├── 02_download_camelyon.sh
+│   └── 04_prepare_slideinstruction.py
+└── Makefile
 ```
 
-## Hardware
+---
 
-- **Local dev:** macOS, 20GB AMD GPU + 32GB RAM
-- **Cloud train:** RunPod RTX A6000 48GB (~$0.44/h, total budget ~$35)
+## Reproducibility Checklist
 
-## Status
+To reproduce the main `grounding_v2` result from scratch:
 
-🚧 In active development (38-day capstone window: May-June 2026).
-See `docs/ROADMAP.md` for week-by-week plan.
+- [ ] `make install`
+- [ ] Set `HF_TOKEN`, `WANDB_API_KEY` in `.env`
+- [ ] Get HF access to CONCHv1.5, TITAN, Llama-3.2-3B-Instruct
+- [ ] `make download-tcga` (RunPod, ~24h)
+- [ ] `make bcss-preprocess` (~3h)
+- [ ] `make precompute` (~10h)
+- [ ] `make prepare-instruction`
+- [ ] `uv run python -m patholens.training.train --config configs/grounding_v2.yaml --run-name grounded_v2_run1` (~15h)
+- [ ] `make eval`
+- [ ] Results in `docs/EXPERIMENTS.md`
+
+---
+
+## Hardware Budget
+
+- **Local dev:** macOS, 20 GB AMD GPU + 32 GB RAM — all code development, smoke tests, notebook analysis
+- **Cloud training:** RunPod A6000 48 GB @ $0.44/h
+  - Embedding precompute: ~10h = ~$4.40
+  - 5 training runs × ~15h = ~$33
+  - Evaluation: ~5h = ~$2.20
+  - **Total GPU: ~$40**
+  - Storage (200 GB × 1.5 months × $0.07/GB): ~$21
+  - **Safe upper bound: $80** (delete WSIs after precompute → ~$47)
+
+---
 
 ## License
 
-Research use only. Built on multiple open-source models with their own licenses:
+Research use only. Component licenses:
 
 - CONCHv1.5: CC-BY-NC-ND 4.0 (non-commercial)
 - TITAN: CC-BY-NC-ND 4.0
+- BCSS annotations: CC0 (public domain)
 - Llama-3.2: Meta Llama 3.2 Community License
+- This repository: MIT
 
 ## Contact
 

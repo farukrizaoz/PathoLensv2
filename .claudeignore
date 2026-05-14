@@ -1,5 +1,12 @@
 # Files Claude Code should NOT load into context (saves tokens)
 
+# Secrets — never load into context
+.env
+.env.local
+*.key
+*.pem
+secrets/
+
 # Raw data
 data/raw/
 data/processed/

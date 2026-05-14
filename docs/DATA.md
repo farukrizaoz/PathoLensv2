@@ -1,88 +1,154 @@
 # Data
 
-Veri kaynakları, indirme talimatları, preprocessing, storage layout.
+Data sources, download instructions, preprocessing pipeline, and storage layout.
 
-## Genel Bakış
+## Overview
 
-| Dataset | Kullanım | Raw boyut | Processed | Lokasyon |
-|---------|----------|-----------|-----------|----------|
-| TCGA-BRCA (150 slide) | Ana fine-tune | ~250 GB | ~20 GB embedding HDF5 | RunPod (raw), local (processed) |
-| CAMELYON16 (test, ~100 slide) | Pointing game eval | ~150 GB | ~10 GB embedding HDF5 | RunPod (raw), local (processed) |
-| SlideInstruction | Instruction tuning | ~5 GB JSON | ~5 GB | Local + RunPod |
+| Dataset | Purpose | Raw Size | Processed | Location |
+|---------|---------|----------|-----------|----------|
+| TCGA-BRCA (151 BCSS-overlap slides) | Primary training | ~255 GB | ~22 GB HDF5 | RunPod (raw), local (processed) |
+| BCSS (151 ROI annotations) | Per-class grounding GT | ~3 GB ROI PNGs | ~2 GB HDF5 | RunPod → local |
+| CAMELYON16 (~100 test slides) | Pointing game eval only | ~150 GB | ~10 GB HDF5 | RunPod |
+| SlideInstruction | Instruction captions | ~5 GB JSON | ~5 GB | Local + RunPod |
 
-**Disiplin:** Ham WSI dosyaları **sadece RunPod'da**. Local'e sadece embedding HDF5 + metadata sync edilir. Bu sayede local makine ~30 GB ile kurtarır.
+**Storage discipline:** Raw WSI files stay on RunPod only. Only HDF5 embeddings and metadata are synced to local (~30 GB).
 
 ---
 
-## TCGA-BRCA
+## TCGA-BRCA: BCSS-Overlap Cohort (151 Slides)
 
 ### Slide Selection
 
-**Stratifiye seçim** (raporlama çeşitliliği için):
-- IDC (Invasive Ductal Carcinoma): 90 slide (~%60)
-- ILC (Invasive Lobular Carcinoma): 30 slide (~%20)
-- Diğer (mucinous, medullary, mixed): 30 slide (~%20)
+The training cohort is the 151 TCGA-BRCA slides for which BCSS pixel-level ROI annotations exist. This enables the hybrid BCSS + pseudo-GT grounding supervision.
 
-Grade dağılımı hedef: G1=30, G2=60, G3=60.
+> This replaces the earlier stratified 150-slide selection plan. BCSS annotation availability is the binding constraint — we use all 151 annotated slides rather than imposing an arbitrary stratification.
 
-### Indirme
+**Approximate subtype distribution (subject to BCSS composition):**
+- IDC (Invasive Ductal Carcinoma): ~90 slides
+- ILC (Invasive Lobular Carcinoma): ~20 slides
+- Other subtypes: ~41 slides
+
+The BCSS slide list is the canonical source (`data/metadata/bcss_slide_ids.txt`, generated during BCSS preprocessing).
+
+### Download
 
 ```bash
-# RunPod'da çalışır, ~12-24 saat
+# Run on RunPod — ~12–24 hours
 make download-tcga
 ```
 
-Adımlar (otomatize, `scripts/01_download_tcga.sh`):
+The download script (`scripts/01_download_tcga.sh`) reads `data/metadata/bcss_slide_ids.txt` to build the GDC manifest and downloads only those 151 slides.
 
-1. GDC manifest oluştur (klinik filtreleme + 150 slide stratifiye seçim)
-2. `gdc-client` ile paralel indirme (8 worker)
-3. Klinik metadata TSV indirme (case_id, grade, subtype, etc.)
+### Clinical Labels
 
-```bash
-# Manifest + clinical metadata location
-data/raw/gdc_manifest_BRCA_150.txt
-data/raw/tcga_brca_clinical.tsv
+```
+data/metadata/tcga_brca_clinical.tsv
 ```
 
-### Klinik Etiketler
-
-GDC clinical TSV'den önemli alanlar:
-- `case_id` (UUID, slide ID ile eşleşir)
-- `histological_type`
-- `tumor_grade`
-- `pathologic_stage`
-- `er_status`, `pr_status`, `her2_status`
+Key fields from GDC clinical export: `case_id`, `histological_type`, `tumor_grade`, `pathologic_stage`, `er_status`, `pr_status`, `her2_status`.
 
 ### Pathology Reports
 
-**Karar: TCGA pathology raporlarını DOĞRUDAN parse etmiyoruz.**
-SlideInstruction zaten TCGA-BRCA için GPT-4 ile yapılandırılmış caption'lar sunuyor (4.2K caption içinde TCGA-BRCA case'leri büyük çoğunluğu kapsıyor). Bu sorunu çözüyor.
-
-Eğer ekstra rapor verisi gerekirse Hafta 4'te GDC API ile PDF reports indirilebilir, ama şu an scope dışı.
+**We do NOT parse raw TCGA PDF reports.** SlideInstruction provides GPT-4 structured captions for all 151 slides. These are the training targets.
 
 ---
 
-## CAMELYON16
+## BCSS (Breast Cancer Semantic Segmentation)
 
-### Indirme
+### Description
+
+- **151 TCGA-BRCA slides** with pixel-level ROI annotation (same SVS files as our training set)
+- **22 tissue classes** → 4 primary classes used:
+  - `tumor` (class 1 in BCSS)
+  - `stroma` (class 2)
+  - `lymphocytic_infiltrate` → `lymph` (class 3)
+  - `necrosis_or_debris` → `necrosis` (class 12)
+- ROI-only annotations (not full-slide) — typically 20–60% patch coverage
+- **CC0 license** (public domain, no restrictions)
+- Source: Grand Challenge Girder server (no authentication required)
+
+Reference: Amgad et al. (2019), GigaScience. https://doi.org/10.1093/gigascience/giz037
+
+### Download and Preprocessing
 
 ```bash
-make download-camelyon  # ~150 GB
+# Downloads RGB ROI tiles + label-map PNGs, rasterizes to patch grid
+uv run python -m patholens.data.bcss_loader \
+    --slide-ids data/metadata/bcss_slide_ids.txt \
+    --wsi-dir data/raw/tcga_brca \
+    --output-dir data/processed/bcss_patch_masks \
+    --patch-size 448 \
+    --magnification 20
 ```
 
-İçerik (`scripts/02_download_camelyon.sh`):
-- WSI dosyaları (TIFF format)
-- Pixel-level tumor annotation (XML format)
-- Slide-level binary label
+**Pipeline (`src/patholens/data/bcss_loader.py`):**
 
-**Sadece test set (~130 slide) indirilir, training set indirilmez.**
+1. Download RGB ROI tile + label-map PNG from Girder server for each annotated slide
+2. Align BCSS annotation space to our 20× patch grid:
+   - BCSS native: 40× (0.25 MPP) → downsample 2× to match our 20× patches
+   - For each patch, compute fraction of pixels belonging to each class
+3. Write per-slide HDF5
 
-Kaynak: https://camelyon16.grand-challenge.org/Data/
-AWS S3 mirror: `s3://camelyon-dataset/CAMELYON16/`
+### Output HDF5 Schema
 
-### XML → Patch-level Mask Conversion
+```
+data/processed/bcss_patch_masks/{slide_id}.h5
+├── mask_tumor:    (N_patches,) float32   # fraction of patch pixels = tumor class
+├── mask_stroma:   (N_patches,) float32
+├── mask_lymph:    (N_patches,) float32
+├── mask_necrosis: (N_patches,) float32
+└── roi_coverage:  (N_patches,) bool      # True = patch is within annotated ROI
+```
 
-CAMELYON16 XML annotation'ları polygon olarak tumor regions tanımlar. Grounding ground truth için patch-level binary mask gerekli:
+`N_patches` matches the patch count in the corresponding embedding HDF5. All arrays are aligned by patch index.
+
+**Patch index alignment:** The embedding precompute step (`precompute_embeddings.py`) and the BCSS loader must use the same tissue-mask-derived patch grid. Both use the same `extract_patches()` function from `wsi_preprocessing.py`. If a BCSS HDF5 is missing for a slide, training falls back to CONCH pseudo-GT for all sentences from that slide.
+
+### Routing Logic in Training
+
+`src/patholens/training/grounding_targets.py` implements the hybrid router:
+
+```python
+# For each (sentence, slide) pair:
+concept = _detect_concept(sentence)        # → "mask_tumor" | "mask_stroma" | ... | None
+if (concept is not None
+        and bcss_masks is not None
+        and roi_fraction >= MIN_BCSS_COVERAGE_FRACTION   # default 0.2
+        and grounding_source == "bcss_hybrid"):
+    gt_dist = normalise(bcss_masks[concept])   # BCSS used
+else:
+    gt_dist = pseudo_gt_cache.get_or_compute(...)  # CONCH pseudo-GT fallback
+```
+
+### Known Limitations (Risk 6)
+
+BCSS annotations cover only part of each slide (ROI bounding boxes). The following slides or sentence types always fall back to pseudo-GT:
+- Sentences without a recognized concept keyword
+- Patches outside the annotated ROI
+- Slides without a BCSS annotation file
+
+Additionally, the BCSS cohort may over-represent high-grade / complex-histology cases (TNBC) relative to the full TCGA-BRCA distribution. Monitor per-subtype concept-F1 in evaluation.
+
+---
+
+## CAMELYON16 (Evaluation Only)
+
+CAMELYON16 is used **only for the pointing-game evaluation**. It is not in the training loop.
+
+**Why excluded from training:**
+- Binary labels (tumor / non-tumor) — cannot supervise stroma/lymph/necrosis sentences
+- Organ mismatch: lymph node metastasis ≠ primary breast tumor histology
+- Only ~1 sentence type benefits from binary GT; the rest of the report has no supervision
+
+### Download
+
+```bash
+make download-camelyon   # ~150 GB, RunPod only
+```
+
+Downloads the test set WSIs and XML polygon annotations.
+
+### XML → Patch-Level Mask Conversion
 
 ```bash
 uv run python -m patholens.data.camelyon_xml_to_mask \
@@ -92,128 +158,125 @@ uv run python -m patholens.data.camelyon_xml_to_mask \
     --patch-size 448
 ```
 
-Output (HDF5, slide başına):
+Output per slide:
 ```
-test_001.h5
-├── coordinates: (N_patches, 2)  # patch (x, y) origin
-├── tumor_mask: (N_patches,) uint8  # 1 if patch overlaps tumor polygon
-└── metadata: {slide_dim, mpp, polygon_count}
+data/processed/camelyon_patch_masks/{slide_id}.h5
+├── coordinates: (N_patches, 2)
+├── tumor_mask:  (N_patches,) uint8   # 1 = patch overlaps tumor polygon
+└── metadata:    {slide_dim, mpp, polygon_count}
 ```
 
 ---
 
 ## SlideInstruction
 
-### Description
+Open dataset from the SlideChat team (`General-Medical-AI/SlideChat` on HuggingFace):
+- 4.2K WSI-caption pairs
+- 176K VQA examples
+- Covers the majority of TCGA-BRCA cases
+- GPT-4 structured format
 
-SlideChat takımının açık datasetı:
-- 4.2K WSI-caption pair
-- 176K VQA örneği
-- TCGA-BRCA case'lerini büyük çoğunluğu kapsıyor
-- GPT-4 ile yapılandırılmış format
-
-Source: `General-Medical-AI/SlideChat` HuggingFace dataset repo.
-
-### Indirme + Filtreleme
+### Download + Filtering
 
 ```bash
 make prepare-instruction
 ```
 
 Pipeline (`scripts/04_prepare_slideinstruction.py`):
-1. HuggingFace'ten download
-2. TCGA-BRCA case ID'lerine göre filtrele (sizin 150 slide ile eşleşen)
-3. Train/val/test split oluştur (80/10/10)
-4. Output: `data/processed/slideinstruction/{train,val,test}.json`
+1. Download from HuggingFace
+2. Filter to the 151 BCSS-overlap slide IDs
+3. 70/15/15 train/val/test split
+
+Output:
+```
+data/processed/slideinstruction/train.json   (~105 slides)
+data/processed/slideinstruction/val.json     (~23 slides)
+data/processed/slideinstruction/test.json    (~23 slides)
+```
 
 ### Format
 
 ```json
 {
   "slide_id": "TCGA-AR-A1AH-01Z-00-DX1",
-  "case_id": "TCGA-AR-A1AH",
-  "caption": "Invasive ductal carcinoma, Grade 2, with focal lymphovascular invasion. Tumor measures 2.3 cm. Margins negative. No metastatic carcinoma in 12 lymph nodes.",
+  "caption": "Invasive ductal carcinoma, Grade 2, with focal lymphovascular invasion...",
+  "instruction": "Generate a structured pathology report for this whole-slide image.",
   "vqa_pairs": [
-    {"question": "What is the histologic type?", "answer": "Invasive ductal carcinoma"},
-    {"question": "Nottingham grade?", "answer": "Grade 2"}
+    {"question": "What is the histologic type?", "answer": "Invasive ductal carcinoma"}
   ],
-  "metadata": {
-    "histological_type": "IDC",
-    "grade": "G2",
-    "stage": "Stage IIA"
-  }
+  "metadata": {"histological_type": "IDC", "grade": "G2", "stage": "Stage IIA"}
 }
 ```
 
 ---
 
-## Preprocessing Pipeline
+## Embedding Precompute Pipeline
 
-Tek komut: `make precompute`
+Single command: `make precompute` (RunPod, ~10 hours for all 151 slides)
 
 ```bash
-# RunPod'da çalışır, tüm slide'lar için ~10 saat
-uv run python -m patholens.data.precompute_embeddings \
-    --config configs/precompute.yaml
+uv run python -m patholens.data.precompute_embeddings --config configs/precompute.yaml
 ```
 
-Pipeline adımları (slide başına):
+### Steps Per Slide
 
-### 1. Tissue Segmentation
-
+**1. Tissue Segmentation**
 ```python
-# Otsu first
-mask = otsu_tissue_mask(wsi_thumbnail @ 1.25x)
-if mask.sum() < min_tissue_area:
-    mask = grandqc_tissue_mask(wsi_thumbnail)  # fallback
+mask = otsu_tissue_mask(thumbnail_at_1_25x)
+if mask.tissue_fraction < 0.05:
+    mask = grandqc_tissue_mask(thumbnail)
 ```
 
-### 2. Patch Extraction
-
+**2. Patch Extraction**
 ```python
-# Tissue mask üzerinde 448×448 patch grid @20×
-# Tissue ratio > 0.5 olan patch'ler tutulur
-patches, coords = extract_patches(wsi, mask, patch_size=448, mag=20)
-# Tipik: ~3K-7K patch
+patches, coords = extract_patches(wsi, mask, patch_size=448, magnification=20)
+# Retains patches with tissue_ratio > 0.5
+# Typical: 3K–7K patches
 ```
 
-### 3. CONCHv1.5 Patch Embedding
+**3. Dual Patch Embedding**
 
+Two separate encoders are run on the same patches:
 ```python
-# Batch processing, mixed precision (bf16)
-patch_embeddings = []
-for batch in batched(patches, batch_size=128):
-    emb = conchv15_encoder(batch)  # (B, 768)
-    patch_embeddings.append(emb.float())
-# Total: (N_patches, 768)
+# CONCHv1.5 (768-dim) → LLM vision tokens + TITAN input
+patch_embeddings_v15 = conchv15_encoder.encode_patches(patches)   # (N, 768)
+
+# CONCH v1 (512-dim) → pseudo-GT cosine similarity
+patch_embeddings_v1 = conchv1_encoder.encode_patches(patches)    # (N, 512)
 ```
 
-### 4. TITAN Slide Encoding
+> These two embedding spaces are **not compatible** — do not mix them. CONCHv1.5 is vision-only; CONCH v1 has a shared vision+text space used for cross-modal cosine similarity in pseudo-GT computation.
 
+**4. TITAN Slide Encoding**
 ```python
-# TITAN slide encoder positional encoding ile slide-level tokens üretir
-slide_tokens = titan_slide_encoder(patch_embeddings, coords)
-# Output: (N_slide_tokens, 768)
+slide_tokens = titan_encoder.encode_slide(patch_embeddings_v15, coords)  # (M, 768)
+# Stored in HDF5 for future use; not used in current training loop
 ```
 
-### 5. HDF5 Cache
-
-Slide başına bir HDF5 dosyası:
+**5. HDF5 Output**
 
 ```
-TCGA-AR-A1AH-01Z-00-DX1.h5
-├── patch_embeddings: (N_patches, 768) float16
-├── slide_tokens: (N_slide_tokens, 768) float16
-├── coordinates: (N_patches, 2) int32
-├── tissue_mask_lowres: (H, W) uint8
-└── attrs:
-    ├── slide_id, case_id
-    ├── magnification: 20
-    ├── patch_size: 448
-    ├── total_tissue_patches
-    ├── n_slide_tokens
-    └── conch_version, titan_version
+data/processed/embeddings/tcga_brca/{slide_id}.h5
+├── patch_embeddings_v15: (N_patches, 768) float16   ← LLM vision tokens
+├── patch_embeddings_v1:  (N_patches, 512) float16   ← pseudo-GT
+├── slide_tokens:         (M, 768) float16            ← TITAN (stored, not used in training)
+├── coordinates:          (N_patches, 2) int32
+├── tissue_mask_lowres:   (H_thumb, W_thumb) uint8
+└── attrs: {slide_id, magnification, patch_size, n_patches, n_slide_tokens, model_versions}
 ```
+
+---
+
+## Data Splits
+
+| Split | TCGA-BRCA (151 BCSS slides) | CAMELYON16 | Purpose |
+|-------|----------------------------|------------|---------|
+| Train | 105 slides (70%) | — | Caption + grounding training |
+| Val | 23 slides (15%) | — | Hyperparameter tuning, early stopping |
+| Test in-domain | 23 slides (15%) | — | Caption metrics (BLEU/ROUGE) |
+| Test grounding | — | ~100 slides | Pointing game (cross-dataset generalization) |
+
+CAMELYON16 is eval-only — this enables a cross-dataset generalization narrative without data contamination.
 
 ---
 
@@ -221,26 +284,28 @@ TCGA-AR-A1AH-01Z-00-DX1.h5
 
 ```
 data/
-├── raw/                          # ONLY on RunPod (gigabytes)
-│   ├── tcga_brca/                # *.svs files
+├── raw/                              # RunPod only (gigabytes, never synced)
+│   ├── tcga_brca/                    # *.svs (151 slides, ~255 GB)
 │   ├── camelyon16/
-│   │   ├── test/
-│   │   │   ├── images/           # *.tif
-│   │   │   └── annotations/      # *.xml
-│   └── gdc_manifest_BRCA_150.txt
+│   │   └── test/
+│   │       ├── images/               # *.tif (~100 slides)
+│   │       └── annotations/          # *.xml
+│   └── bcss/                         # downloaded ROI tiles + label PNGs
 │
-├── processed/                    # Synced local ↔ RunPod (~30 GB)
+├── processed/                        # Synced local ↔ RunPod (~35 GB)
 │   ├── embeddings/
-│   │   ├── tcga_brca/            # *.h5 (one per slide)
-│   │   └── camelyon16/           # *.h5
-│   ├── tissue_masks/             # numpy arrays (low-res)
-│   ├── camelyon_patch_masks/     # *.h5 (XML-derived ground truth)
+│   │   ├── tcga_brca/                # {slide_id}.h5 (151 files)
+│   │   └── camelyon16/               # {slide_id}.h5 (eval only)
+│   ├── bcss_patch_masks/             # {slide_id}.h5 (per-class patch masks)
+│   ├── pseudo_gt_cache/              # {slide_id}/{sentence_hash}.npz
+│   ├── camelyon_patch_masks/         # {slide_id}.h5 (XML-derived binary GT)
 │   └── slideinstruction/
 │       ├── train.json
 │       ├── val.json
 │       └── test.json
 │
 └── metadata/
+    ├── bcss_slide_ids.txt            # 151 TCGA-BRCA slide IDs with BCSS annotations
     ├── tcga_brca_clinical.tsv
     ├── splits.json
     └── case_selection.csv
@@ -248,44 +313,27 @@ data/
 
 ---
 
-## Data Splits
-
-| Split | TCGA-BRCA | CAMELYON16 | Amaç |
-|-------|-----------|------------|------|
-| Train | 105 slide (70%) | — | Caption + grounding loss eğitimi |
-| Val | 22 slide (15%) | — | Hyperparameter tuning, early stopping |
-| Test (in-domain) | 23 slide (15%) | — | Final caption metrics |
-| Test (grounding) | — | ~100 slide | Pointing game ground truth |
-
-CAMELYON16 sadece eval için kullanılır → cross-dataset generalization hikayesi.
-
-**Grounding v2 deneyinde** (Hafta 5) opsiyonel olarak CAMELYON16 train set'ten 30-50 slide eğitime dahil edilebilir → ablation comparison için.
-
----
-
 ## QC Checks
 
-`scripts/qc_embeddings.py` her precompute sonrası otomatik kontrol:
-- ✓ Tissue patch sayısı slide başına 1000-15000 arasında
-- ✓ Embedding HDF5 boyutu beklenen aralıkta (slide başına 5-30 MB)
-- ✓ NaN/Inf yok
-- ✓ Coordinate'lar slide boyutu içinde
-- ✓ slide_tokens shape (N, 768)
+`scripts/qc_embeddings.py` runs after precompute:
+- Patch count per slide: 1,000–15,000
+- HDF5 file size: 5–30 MB per slide
+- No NaN/Inf values in any embedding array
+- Coordinates within slide bounds
+- BCSS mask N_patches matches embedding N_patches (alignment check)
 
 ---
 
 ## Privacy / Compliance
 
-- TCGA-BRCA tamamen anonim, public, KVKK/GDPR sorunu yok
-- CAMELYON16 public, sınırlama yok
-- Hiçbir PHI işlenmez
-- WSI dosyaları RunPod'da kalır, lokal'e taşınmaz
-- Embedding'lerden orijinal WSI rekonstrüksiyonu mümkün değil (irreversible)
+- TCGA-BRCA: fully anonymized, public (NIH policy)
+- BCSS: CC0 license (public domain)
+- CAMELYON16: public, no restrictions
+- No PHI is processed
+- WSI files remain on RunPod; only embeddings (irreversible) are synced locally
 
 ---
 
 ## HuggingFace Gated Access
 
-CONCHv1.5 ve TITAN modellerinin gated olduğunu unutma. Detay: `docs/MODEL_ACCESS.md`.
-
-İndirme öncesi `huggingface-cli login` çalıştırılmalı veya `HF_TOKEN` env'de set edilmiş olmalı.
+CONCHv1.5 and TITAN are gated models. See `docs/MODEL_ACCESS.md` for access instructions. Ensure `HF_TOKEN` is set in `.env` before any precompute step.

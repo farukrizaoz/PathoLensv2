@@ -1,7 +1,7 @@
 # Roadmap
 
-**Window:** Today  - June 12, 2026
-**Buffer:** 0 days. Tight schedule, parallel work essential.
+**Window:** 14 Mayıs – 12 Haziran 2026 (38 gün)
+**Buffer:** 0 gün. Paralel çalışma zorunlu.
 
 ---
 
@@ -52,6 +52,15 @@ Detay: `docs/MODEL_ACCESS.md`.
 - [ ] Train/val/test split oluştur
 - [ ] Caption length distribution notebook
 
+### Gün 3 (Paralel): PoC — CONCH Zero-Shot Grounding (Colab, ~2 saat)
+
+**Faruk (hoca gösterimi için):**
+
+- [ ] `notebooks/poc_conch_grounding.py` → Colab'a yükle
+- [ ] 32 PatchCamelyon patch üzerinde çalıştır
+- [ ] H2 entropy tablosunu kaydet (screenshot)
+- [ ] AUC-ROC skoru kaydet → L_grounding GT sinyalinin geçerliliği doğrulandı mı?
+
 ### Gün 6-7: Embedding precompute + Tissue seg
 
 - [ ] HF access onayları geldi mi? (Gün 4-5 civarı bekleniyor)
@@ -64,6 +73,7 @@ Detay: `docs/MODEL_ACCESS.md`.
 **Hafta 1 Checkpoint:**
 
 - ✓ HF gated access onaylandı
+- ✓ PoC CONCH zero-shot grounding çalıştırıldı (H1 + H2 ön bulgu)
 - ✓ 150 TCGA-BRCA + 100 CAMELYON16 indirildi
 - ✓ Tüm slide'lar için embedding HDF5 oluştu
 - ✓ Lokal-RunPod sync akışı çalışıyor
@@ -158,7 +168,7 @@ Detay: `docs/MODEL_ACCESS.md`.
 - [ ] Caption loss vs grounding loss balansı izle (lambda_grounding sweep: 0.1, 0.3, 0.5)
 - [ ] Caption kalitesi kötüleşmedi mi (baseline ile compare)?
 
-### Gün 27-28: CAMELYON16 pointing game
+### Gün 27-28: CAMELYON16 pointing game + H2 entropy
 
 **Faruk:**
 
@@ -166,12 +176,20 @@ Detay: `docs/MODEL_ACCESS.md`.
 - [ ] **`make eval-pointing`** çalıştır
 - [ ] Sonuç: tumor cümleleri için pointing game accuracy (PG@5, PG@10)
 - [ ] Baseline vs grounded model karşılaştırma tablosu
+- [ ] **H2 entropy ölçümü** — eval loop'a 3 satır ekle, sıfır ek efor:
+  ```python
+  # src/patholens/evaluation/pointing_game.py içinde, per-batch:
+  entropy = -(sent_attn * torch.log(sent_attn + 1e-8)).sum(dim=-1).mean()
+  wandb.log({"eval/attention_entropy_mean": entropy.item()})
+  ```
+  Baseline entropy vs grounded entropy karşılaştır → H2 kabul/ret
 
 **Hafta 4 Checkpoint:**
 
 - ✓ Grounding loss v1 ile eğitilmiş model
 - ✓ CAMELYON16 pointing game accuracy ölçüldü
 - ✓ Caption metrics degradation kontrolü
+- ✓ H2: attention entropy (baseline vs grounded) WandB'ye loglandı
 
 ---
 
@@ -207,12 +225,25 @@ Detay: `docs/MODEL_ACCESS.md`.
 
 - [ ] Final ablation tablosu:
 
-| Config                         | BLEU-4 | ROUGE-L | PG@5 | Faithfulness | Caption Δ |
-| ------------------------------ | ------ | ------- | ---- | ------------ | ---------- |
-| Caption baseline               | ...    | ...     | ...  | ...          | 0          |
-| + L_grounding (CONCH pseudo)   | ...    | ...     | ...  | ...          | ...        |
-| + L_grounding (CAMELYON expl.) | ...    | ...     | ...  | ...          | ...        |
-| + L_faithfulness reg.          | ...    | ...     | ...  | ...          | ...        |
+| Config                         | BLEU-4 | ROUGE-L | PG@5 | Faithfulness | Concept-F1 | Style Div. ↓ | Caption Δ |
+| ------------------------------ | ------ | ------- | ---- | ------------ | ---------- | ------------ | ---------- |
+| Caption baseline               | ...    | ...     | ...  | ...          | ...        | ...          | 0          |
+| + L_grounding (CONCH pseudo)   | ...    | ...     | ...  | ...          | ...        | ...          | ...        |
+| + L_grounding (CAMELYON expl.) | ...    | ...     | ...  | ...          | ...        | ...          | ...        |
+| + L_faithfulness reg.          | ...    | ...     | ...  | ...          | ...        | ...          | ...        |
+
+- [ ] **Concept-F1** (~3-4 saat, Emir):
+  - SlideInstruction'daki yapılandırılmış alanlardan (`grade`, `subtype`, `margin_status`, `ER/PR/HER2`) kavram seti çıkar
+  - Üretilen metinden aynı kavramları basit keyword/regex matcher ile parse et
+  - `src/patholens/evaluation/concept_f1.py` → `compute_concept_f1(generated, reference)`
+  - Test: `tests/test_concept_f1.py`
+
+- [ ] **Style Divergence** (~2-3 saat, Emir):
+  - Gerçek TCGA raporları ve üretilen metinler üzerinde unigram/bigram frekans dağılımı çıkar
+  - KL divergence hesapla (sklearn `CountVectorizer` → normalize → `scipy.special.kl_div`)
+  - `src/patholens/evaluation/style_divergence.py` → `compute_style_divergence(generated_texts, reference_corpus)`
+  - Hedef: KL < 0.25 (Emir'in TÜBİTAK başvurusundaki eşikle tutarlı)
+  - Test: `tests/test_style_divergence.py`
 
 **Hafta 5 Checkpoint:**
 

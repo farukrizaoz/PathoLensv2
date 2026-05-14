@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
@@ -34,18 +36,25 @@ class CaptionLoss(nn.Module):
 
 
 class GroundingLoss(nn.Module):
-    """KL divergence between generated text→vision attention and ground truth attention.
+    """Grounding loss between generated text→vision attention and GT attention.
 
-    Ground truth attention can come from:
-        (a) CONCHv1.5 zero-shot pseudo-supervision (cosine similarity)
-        (b) CAMELYON16 pixel mask (explicit supervision)
+    Ground truth attention comes from the hybrid router in grounding_targets.py:
+        - BCSS pixel mask (where ROI covers the patch and concept matches)
+        - CONCH v1 pseudo-GT (everywhere else)
 
-    To be implemented in Hafta 4.
+    Two variants:
+        "kl"     — KL(gt || generated), sharpened by temperature (baseline)
+        "cosine" — 1 − cosine_similarity(gt, generated) (ablation; softer for noisy teacher)
     """
 
-    def __init__(self, temperature: float = 0.1) -> None:
+    def __init__(
+        self,
+        temperature: float = 0.1,
+        loss_type: Literal["kl", "cosine"] = "kl",
+    ) -> None:
         super().__init__()
         self.temperature = temperature
+        self.loss_type = loss_type
 
     def forward(
         self,
@@ -58,14 +67,20 @@ class GroundingLoss(nn.Module):
             gt_attn: ground truth attention distribution per sentence
 
         Returns:
-            scalar KL divergence loss
+            scalar grounding loss
         """
-        # KL(gt || generated)
-        return F.kl_div(
-            F.log_softmax(generated_attn / self.temperature, dim=-1),
-            F.softmax(gt_attn / self.temperature, dim=-1),
-            reduction="batchmean",
-        )
+        if self.loss_type == "kl":
+            # KL(gt || generated)
+            return F.kl_div(
+                F.log_softmax(generated_attn / self.temperature, dim=-1),
+                F.softmax(gt_attn / self.temperature, dim=-1),
+                reduction="batchmean",
+            )
+        else:
+            # 1 − cosine similarity (averaged over sentences)
+            gen_norm = F.normalize(generated_attn, dim=-1)
+            gt_norm = F.normalize(gt_attn, dim=-1)
+            return 1.0 - (gen_norm * gt_norm).sum(dim=-1).mean()
 
 
 class FaithfulnessRegularizer(nn.Module):
@@ -97,10 +112,14 @@ class CombinedLoss(nn.Module):
         self,
         lambda_grounding: float = 0.0,
         lambda_faithfulness: float = 0.0,
+        grounding_loss_type: Literal["kl", "cosine"] = "kl",
+        grounding_temperature: float = 0.1,
     ) -> None:
         super().__init__()
         self.caption_loss = CaptionLoss()
-        self.grounding_loss = GroundingLoss()
+        self.grounding_loss = GroundingLoss(
+            temperature=grounding_temperature, loss_type=grounding_loss_type
+        )
         self.faithfulness_reg = FaithfulnessRegularizer()
         self.lambda_g = lambda_grounding
         self.lambda_f = lambda_faithfulness

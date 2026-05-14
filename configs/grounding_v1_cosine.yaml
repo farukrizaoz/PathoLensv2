@@ -1,10 +1,10 @@
-# Grounding v1: CONCH pseudo-GT supervision + faithfulness regularization.
-# Uses CONCH v1 zero-shot cosine similarity as grounding target (no BCSS required).
-# KL divergence loss (baseline). See grounding_v1_cosine.yaml for cosine variant.
+# Grounding v1 cosine: CONCH pseudo-GT supervision with cosine distance loss.
+# Ablation variant of grounding_v1.yaml — identical except loss_type: cosine.
+# Use this to compare KL vs cosine on the same pseudo-GT supervision source.
 
-run_name_prefix: grounded_v1
+run_name_prefix: grounded_v1_cosine
 
-# Data (same as baseline)
+# Data (same as grounding_v1)
 embeddings_dir: data/processed/embeddings/tcga_brca
 instruction_train: data/processed/slideinstruction/train.json
 instruction_val: data/processed/slideinstruction/val.json
@@ -25,12 +25,13 @@ lora:
   target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
   bias: none
 
+# Loss — CHANGED: cosine distance instead of KL
 loss:
   lambda_grounding: 0.3
   lambda_faithfulness: 0.1
-  loss_type: kl   # kl | cosine
+  loss_type: cosine   # kl | cosine
 
-# Grounding source: CONCH v1 pseudo-GT only (no BCSS)
+# Grounding source: pseudo-GT only (no BCSS)
 grounding:
   source: conch_only
   conch_repo: MahmoodLab/conchv1_5
@@ -62,5 +63,5 @@ output_dir: checkpoints
 
 wandb:
   project: patholens-vlm
-  tags: [grounded, v1, conch-pseudo, kl]
+  tags: [grounded, v1, conch-pseudo, cosine]
 log_every: 10

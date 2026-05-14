@@ -138,3 +138,8 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: marks tests requiring GPU",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+]
