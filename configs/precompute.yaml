@@ -13,7 +13,7 @@ batch_size: 64             # CONCH forward batch (24GB VRAM)
 
 # Models (HF gated)
 conch_repo: MahmoodLab/conchv1_5
-titan_repo: MahmoodLab/TITAN
+titan_repo: null               # TITAN disabled — transformers 5.x incompatible, not needed for training
 
 # Tissue segmentation
 otsu_thumbnail_mag: 1.25

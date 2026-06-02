@@ -57,13 +57,16 @@ dependencies = [
 
     # Sentence segmentation for grounding extraction
     "spacy>=3.7.0",
+
+    # PoC demo UI
+    "streamlit>=1.40.0",
 ]
 
 [project.optional-dependencies]
 # RunPod GPU env (CUDA-only packages)
 gpu = [
     "bitsandbytes>=0.44.0",  # Linux/CUDA only, no macOS
-    "flash-attn>=2.6.0; sys_platform == 'linux'",  # optional speedup
+    # flash-attn removed — requires torch pre-installed at build time, optional speedup only
 ]
 
 dev = [

@@ -60,11 +60,12 @@ format:  ## Auto-format with ruff
 # Sync (local <-> RunPod)
 # ============================================================
 
-sync-up:  ## rsync local code → RunPod (excludes data/checkpoints)
+sync-up:  ## rsync local code → RunPod (excludes data/checkpoints, includes metadata)
 	@echo "→ Syncing to $(RUNPOD_HOST):$(REMOTE_DIR)"
 	rsync -avz --progress \
 		--exclude='.git/' \
-		--exclude='data/' \
+		--exclude='data/raw/' \
+		--exclude='data/processed/' \
 		--exclude='checkpoints/' \
 		--exclude='wandb/' \
 		--exclude='__pycache__/' \

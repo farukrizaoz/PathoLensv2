@@ -25,8 +25,13 @@ class LinearAdapter(nn.Module):
         """
         Args:
             slide_tokens: (B, N_tokens, in_dim) or (N_tokens, in_dim)
+                — any dtype; internally cast to the projection's weight dtype
+                so callers can pass bf16 (inference) or fp32 (autocast disabled)
+                without per-call casting.
 
         Returns:
-            (B, N_tokens, out_dim) or (N_tokens, out_dim)
+            (B, N_tokens, out_dim) or (N_tokens, out_dim) — same dtype as weight.
         """
+        if slide_tokens.dtype != self.proj.weight.dtype:
+            slide_tokens = slide_tokens.to(self.proj.weight.dtype)
         return self.proj(slide_tokens)

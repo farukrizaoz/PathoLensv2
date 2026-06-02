@@ -5,7 +5,7 @@ For each WSI:
     2. Patch extraction (448×448 @20×, tissue ratio > 0.5)
     3. CONCHv1.5 patch encoding → (N_patches, 768) float16
     4. CONCH v1 patch encoding   → (N_patches, 512) float16
-    5. TITAN slide encoding      → (N_slide_tokens, 768) float16
+    5. TITAN slide encoding      → (N_slide_tokens, 768) float16  [optional]
     6. HDF5 cache per slide
     7. QC checks; corrupt slides are skipped and logged to a JSON report
 
@@ -39,7 +39,6 @@ from patholens.data.wsi_preprocessing import (
     get_tissue_mask,
 )
 from patholens.models.conch_encoder import ConchV1Encoder
-from patholens.models.titan_encoder import TITANEncoderWrapper
 from patholens.utils.config import load_config
 from patholens.utils.logging import setup_logger
 
@@ -81,29 +80,16 @@ def _embed_patches_batched(
     device: str,
     dtype: torch.dtype = torch.bfloat16,
 ) -> np.ndarray:
-    """Encode (N, H, W, 3) uint8 patches to (N, D) float32 via batched forward pass.
-
-    Args:
-        patches_np: (N, H, W, 3) uint8 RGB array
-        encode_fn: callable(Tensor) → Tensor — already-loaded encoder method
-        transform: preprocessing transform applied per patch
-        batch_size: patches per forward pass
-        device: torch device string
-        dtype: compute dtype for the encoder
-
-    Returns:
-        (N, D) float32 numpy array
-    """
+    """Encode (N, H, W, 3) uint8 patches to (N, D) float32 via batched forward pass."""
     all_embs: list[np.ndarray] = []
     n = len(patches_np)
 
     for start in range(0, n, batch_size):
-        batch_np = patches_np[start : start + batch_size]  # (B, H, W, 3) uint8
-        # PIL-compatible path: transform expects HWC uint8 numpy → CHW float
+        batch_np = patches_np[start : start + batch_size]
         from PIL import Image
 
         tensors = [transform(Image.fromarray(patch)) for patch in batch_np]
-        batch_t = torch.stack(tensors).to(device, dtype=dtype)  # (B, 3, H, W)
+        batch_t = torch.stack(tensors).to(device, dtype=dtype)
         emb = encode_fn(batch_t)
         all_embs.append(emb.cpu().float().numpy())
 
@@ -118,7 +104,7 @@ def _qc_check(
     patches: np.ndarray,
     emb_v15: np.ndarray,
     emb_v1: np.ndarray,
-    slide_tokens: np.ndarray,
+    slide_tokens: np.ndarray | None,
     coordinates: np.ndarray,
 ) -> list[str]:
     """Return a list of QC failure strings (empty = pass)."""
@@ -130,13 +116,16 @@ def _qc_check(
     if n > QC_MAX_PATCHES:
         issues.append(f"patch_count={n} above QC_MAX={QC_MAX_PATCHES}")
 
-    for name, arr in [("emb_v15", emb_v15), ("emb_v1", emb_v1), ("slide_tokens", slide_tokens)]:
+    arrays_to_check = [("emb_v15", emb_v15), ("emb_v1", emb_v1)]
+    if slide_tokens is not None:
+        arrays_to_check.append(("slide_tokens", slide_tokens))
+
+    for name, arr in arrays_to_check:
         if np.any(np.isnan(arr)):
             issues.append(f"{name} contains NaN")
         if np.any(np.isinf(arr)):
             issues.append(f"{name} contains Inf")
 
-    # Embedding norms should be close to 1 (both CONCH encoders L2-normalise)
     for name, arr in [("emb_v15", emb_v15), ("emb_v1", emb_v1)]:
         if len(arr) > 0:
             norms = np.linalg.norm(arr, axis=-1)
@@ -144,7 +133,7 @@ def _qc_check(
             if abs(mean_norm - 1.0) > QC_NORM_TOL:
                 issues.append(f"{name} mean norm={mean_norm:.3f} (expected ≈1.0)")
 
-    if slide_tokens.ndim != 2 or slide_tokens.shape[1] != 768:
+    if slide_tokens is not None and (slide_tokens.ndim != 2 or slide_tokens.shape[1] != 768):
         issues.append(f"slide_tokens shape={slide_tokens.shape}, expected (M, 768)")
 
     if coordinates.ndim != 2 or coordinates.shape[1] != 2:
@@ -158,18 +147,15 @@ def _qc_check(
 
 def _process_slide(
     wsi_path: Path,
-    titan: TITANEncoderWrapper,
+    conch_v15_encode_fn,
     conch_v1: ConchV1Encoder,
-    output_dir: Path,
-    cfg: object,
-    device: str,
-    transform: T.Compose,
+    titan=None,
+    output_dir: Path = None,
+    cfg: object = None,
+    device: str = "cuda",
+    transform: T.Compose = None,
 ) -> dict:
-    """Process one WSI end-to-end; return a result dict with qc_issues list.
-
-    Returns:
-        dict with keys: slide_id, n_patches, n_slide_tokens, qc_issues, duration_s
-    """
+    """Process one WSI end-to-end; return a result dict with qc_issues list."""
     t0 = time.perf_counter()
     slide_id = wsi_path.stem
     result: dict = {"slide_id": slide_id, "n_patches": 0, "n_slide_tokens": 0, "qc_issues": []}
@@ -206,7 +192,7 @@ def _process_slide(
     # ── 3. CONCHv1.5 patch embeddings ─────────────────────────────────────────
     emb_v15 = _embed_patches_batched(
         patches_np=patches,
-        encode_fn=titan.encode_patches,
+        encode_fn=conch_v15_encode_fn,
         transform=transform,
         batch_size=cfg.batch_size,
         device=device,
@@ -223,11 +209,13 @@ def _process_slide(
         dtype=torch.float32,
     )  # (N, 512)
 
-    # ── 5. TITAN slide encoding ───────────────────────────────────────────────
-    emb_v15_t = torch.from_numpy(emb_v15).to(device)
-    coords_t = torch.from_numpy(coordinates).to(device)
-    slide_tokens = titan.encode_slide(emb_v15_t, coords_t).cpu().numpy()  # (M, 768)
-    result["n_slide_tokens"] = len(slide_tokens)
+    # ── 5. TITAN slide encoding (optional) ────────────────────────────────────
+    slide_tokens = None
+    if titan is not None:
+        emb_v15_t = torch.from_numpy(emb_v15).to(device)
+        coords_t = torch.from_numpy(coordinates).to(device)
+        slide_tokens = titan.encode_slide(emb_v15_t, coords_t).cpu().numpy()  # (M, 768)
+        result["n_slide_tokens"] = len(slide_tokens)
 
     # ── 6. QC ─────────────────────────────────────────────────────────────────
     qc_issues = _qc_check(slide_id, patches, emb_v15, emb_v1, slide_tokens, coordinates)
@@ -245,7 +233,8 @@ def _process_slide(
     with h5py.File(out_path, "w") as f:
         f.create_dataset("patch_embeddings_v15", data=emb_v15.astype(dtype_np), **kwargs)
         f.create_dataset("patch_embeddings_v1", data=emb_v1.astype(dtype_np), **kwargs)
-        f.create_dataset("slide_tokens", data=slide_tokens.astype(dtype_np), **kwargs)
+        if slide_tokens is not None:
+            f.create_dataset("slide_tokens", data=slide_tokens.astype(dtype_np), **kwargs)
         f.create_dataset("coordinates", data=coordinates, **kwargs)
         f.create_dataset("tissue_mask_lowres", data=tissue_mask, compression="gzip")
 
@@ -253,10 +242,10 @@ def _process_slide(
         f.attrs["magnification"] = cfg.magnification
         f.attrs["patch_size"] = cfg.patch_size
         f.attrs["total_tissue_patches"] = len(patches)
-        f.attrs["n_slide_tokens"] = len(slide_tokens)
+        f.attrs["n_slide_tokens"] = len(slide_tokens) if slide_tokens is not None else 0
         f.attrs["conch_v1_repo"] = "MahmoodLab/conch"
         f.attrs["conch_v15_repo"] = "MahmoodLab/conchv1_5"
-        f.attrs["titan_repo"] = cfg.titan_repo
+        f.attrs["titan_repo"] = cfg.titan_repo or "disabled"
 
     result["hdf5_mb"] = out_path.stat().st_size / 1e6
     result["duration_s"] = time.perf_counter() - t0
@@ -275,7 +264,7 @@ def main(
     streaming: bool = typer.Option(False, help="Delete WSI after embedding"),
     resume: bool = typer.Option(True, help="Skip slides whose HDF5 already exists"),
 ) -> None:
-    """Run the CONCHv1.5 + CONCH v1 + TITAN embedding precompute pipeline."""
+    """Run the CONCHv1.5 + CONCH v1 embedding precompute pipeline (TITAN optional)."""
     cfg = load_config(config)
 
     if wsi_dir:
@@ -295,7 +284,6 @@ def main(
         console.print(f"[red]No .svs/.tif files found in {cfg.wsi_dir}[/red]")
         raise typer.Exit(1)
 
-    # Resume: skip already-processed slides
     if resume:
         before = len(wsi_paths)
         wsi_paths = [p for p in wsi_paths if not (out_dir / f"{p.stem}.h5").exists()]
@@ -306,8 +294,18 @@ def main(
     console.print(f"Processing {len(wsi_paths)} WSIs → {out_dir}")
 
     # ── Load models ───────────────────────────────────────────────────────────
-    console.print("Loading TITAN (CONCHv1.5 bundled)…")
-    titan = TITANEncoderWrapper(hf_repo=cfg.titan_repo, device=device).load()
+    titan = None
+    titan_repo = getattr(cfg, "titan_repo", None)
+    if titan_repo:
+        console.print("Loading TITAN (CONCHv1.5 bundled)…")
+        from patholens.models.titan_encoder import TITANEncoderWrapper
+        titan = TITANEncoderWrapper(hf_repo=titan_repo, device=device).load()
+        conch_v15_encode_fn = titan.encode_patches
+    else:
+        console.print("TITAN disabled — loading CONCHv1.5 standalone…")
+        from patholens.models.conch_encoder import ConchV15Encoder
+        conch_v15 = ConchV15Encoder(device=device).load()
+        conch_v15_encode_fn = conch_v15.encode_patches
 
     console.print("Loading CONCH v1…")
     conch_v1 = ConchV1Encoder(device=device).load()
@@ -334,8 +332,9 @@ def main(
             try:
                 result = _process_slide(
                     wsi_path=wsi_path,
-                    titan=titan,
+                    conch_v15_encode_fn=conch_v15_encode_fn,
                     conch_v1=conch_v1,
+                    titan=titan,
                     output_dir=out_dir,
                     cfg=cfg,
                     device=device,

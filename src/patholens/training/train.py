@@ -66,6 +66,7 @@ class PathoTrainer(Trainer):
         conch_v1_encoder: object,
         grounding_source: Literal["conch_only", "bcss_hybrid"] = "bcss_hybrid",
         adapter_lr: float = 1e-4,
+        grounding_warmup_epochs: float = 0.0,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -74,6 +75,10 @@ class PathoTrainer(Trainer):
         self.conch_v1_encoder = conch_v1_encoder
         self.grounding_source = grounding_source
         self.adapter_lr = adapter_lr
+        self.grounding_warmup_epochs = float(grounding_warmup_epochs)
+        # Remember the user-supplied lambdas so warmup can restore them.
+        self._target_lambda_g = float(combined_loss.lambda_g)
+        self._target_lambda_f = float(combined_loss.lambda_f)
 
     # ── Loss ────────────────────────────────────────────────────────────────
 
@@ -112,6 +117,18 @@ class PathoTrainer(Trainer):
         input_ids = input_ids.to(adapter_device)
         attention_mask = attention_mask.to(adapter_device)
         labels = labels.to(adapter_device)
+
+        # Optional grounding warmup: caption-only for the first
+        # `grounding_warmup_epochs` epochs so the adapter + LoRA learn the
+        # language modelling task before grounding/faithfulness compete for
+        # gradient budget. Lambdas are restored once the warmup window closes.
+        warmup = float(getattr(self, "grounding_warmup_epochs", 0.0))
+        if warmup > 0.0 and float(self.state.epoch or 0.0) < warmup:
+            self.combined_loss.lambda_g = 0.0
+            self.combined_loss.lambda_f = 0.0
+        else:
+            self.combined_loss.lambda_g = float(self._target_lambda_g)
+            self.combined_loss.lambda_f = float(self._target_lambda_f)
 
         need_attn = self.combined_loss.lambda_g > 0
         out: dict = model(
@@ -167,9 +184,21 @@ class PathoTrainer(Trainer):
                 generated_attn = torch.stack(gen_list, dim=0)  # (S, N_v)
                 gt_attn = torch.stack(gt_list, dim=0)  # (S, N_v)
 
+        # `out["logits"]` is over (N_v + T) positions (vision prefix + text);
+        # `labels` is only the T text positions. Pad with -100 for the vision
+        # prefix so cross-entropy sees matching sequence lengths.
+        n_v = out["n_vision_tokens"]
+        if n_v > 0:
+            vis_lab = torch.full(
+                (labels.size(0), n_v), -100, dtype=labels.dtype, device=labels.device
+            )
+            full_labels = torch.cat([vis_lab, labels], dim=1)
+        else:
+            full_labels = labels
+
         loss_dict = self.combined_loss(
             logits=out["logits"],
-            labels=labels,
+            labels=full_labels,
             generated_attn=generated_attn,
             gt_attn=gt_attn,
         )
@@ -299,10 +328,21 @@ def main(
             model.llm.enable_input_require_grads()
             model.llm.gradient_checkpointing_enable()
 
-    # ── CONCH v1 encoder for pseudo-GT ───────────────────────────────────────
+    # ── CONCH v1 encoder for pseudo-GT (optional — only needed when grounding
+    # falls back away from BCSS). Gracefully disabled when the HF account has
+    # no access; build_target then returns a uniform fallback distribution,
+    # which is fine as long as every training slide has BCSS coverage.
     from patholens.models.conch_encoder import ConchV1Encoder
 
-    conch_v1 = ConchV1Encoder(device=device).load()
+    conch_v1 = None
+    try:
+        conch_v1 = ConchV1Encoder(device=device).load()
+    except Exception as exc:
+        logger.warning(
+            "CONCH v1 unavailable (%s); proceeding without pseudo-GT "
+            "(only viable when every slide has BCSS coverage).",
+            exc,
+        )
 
     # ── Pseudo-GT cache ──────────────────────────────────────────────────────
     cache_root: str = cfg.get("pseudo_gt_cache_dir", "data/processed")
@@ -363,6 +403,8 @@ def main(
         remove_unused_columns=False,
         dataloader_num_workers=0,
         gradient_checkpointing=False,  # managed manually above for 4-bit compat
+        save_safetensors=False,  # Llama ties embed/lm_head; safetensors refuses
+        save_total_limit=2,  # cap on-disk checkpoints during long runs
     )
 
     # ── Trainer ──────────────────────────────────────────────────────────────
@@ -377,6 +419,7 @@ def main(
         conch_v1_encoder=conch_v1,
         grounding_source=grounding_source,
         adapter_lr=float(cfg.optimizer.lr_adapter),
+        grounding_warmup_epochs=float(cfg.loss.get("grounding_warmup_epochs", 0.0)),
     )
 
     trainer.train()

@@ -69,22 +69,40 @@ class GroundingLoss(nn.Module):
         Returns:
             scalar grounding loss
         """
+        eps = 1e-8
+        # Renormalise the generated attention slice to a proper distribution
+        # over N_v patches (attention weights summed over heads do not sum to 1
+        # because they share probability mass with text-token positions).
+        gen_probs = generated_attn / generated_attn.sum(dim=-1, keepdim=True).clamp(min=eps)
+        # gt is already normalised (sums to 1) by `build_target`; just clamp.
+        gt_probs = gt_attn / gt_attn.sum(dim=-1, keepdim=True).clamp(min=eps)
+
         if self.loss_type == "kl":
-            # KL(gt || generated)
-            return F.kl_div(
-                F.log_softmax(generated_attn / self.temperature, dim=-1),
-                F.softmax(gt_attn / self.temperature, dim=-1),
-                reduction="batchmean",
-            )
+            # KL(gt || generated). Temperature sharpens both distributions before
+            # comparison (lower T -> peakier, harder match).
+            log_gen = torch.log(gen_probs.clamp(min=eps))
+            if self.temperature != 1.0:
+                log_gen = log_gen / self.temperature
+                log_gen = log_gen - log_gen.logsumexp(dim=-1, keepdim=True)
+                gt_sharp = (gt_probs.clamp(min=eps).log() / self.temperature).softmax(dim=-1)
+            else:
+                gt_sharp = gt_probs
+            return F.kl_div(log_gen, gt_sharp, reduction="batchmean")
         else:
-            # 1 − cosine similarity (averaged over sentences)
-            gen_norm = F.normalize(generated_attn, dim=-1)
-            gt_norm = F.normalize(gt_attn, dim=-1)
+            # 1 − cosine similarity over the (already non-negative) distributions
+            gen_norm = F.normalize(gen_probs, dim=-1)
+            gt_norm = F.normalize(gt_probs, dim=-1)
             return 1.0 - (gen_norm * gt_norm).sum(dim=-1).mean()
 
 
 class FaithfulnessRegularizer(nn.Module):
     """Encourage attention concentration: low entropy per sentence.
+
+    Input is the *raw* per-sentence attention slice (sum over patches is small
+    because attention is shared between vision and text positions in the
+    transformer's softmax). We renormalise to a proper probability distribution
+    over the N_v patches before taking entropy — otherwise softmax of near-zero
+    values collapses to uniform and entropy locks at log(N_v).
 
     Adapted from ACMIL branch concentration loss.
     """
@@ -95,13 +113,17 @@ class FaithfulnessRegularizer(nn.Module):
     def forward(self, sentence_attentions: Tensor) -> Tensor:
         """
         Args:
-            sentence_attentions: (N_sentences, N_vision_tokens), already softmax'd
+            sentence_attentions: (N_sentences, N_vision_tokens) — raw attention
+                weights summed over heads, non-negative, row-sum < 1 (some
+                attention went to text positions).
 
         Returns:
-            mean entropy across sentences (to be minimized)
+            mean entropy across sentences (to be minimized; lower = peakier).
         """
         eps = 1e-8
-        entropy = -(sentence_attentions * torch.log(sentence_attentions + eps)).sum(dim=-1)
+        row_sum = sentence_attentions.sum(dim=-1, keepdim=True).clamp(min=eps)
+        probs = sentence_attentions / row_sum  # proper distribution over N_v
+        entropy = -(probs * torch.log(probs + eps)).sum(dim=-1)
         return entropy.mean()
 
 
@@ -140,8 +162,11 @@ class CombinedLoss(nn.Module):
             total = total + self.lambda_g * loss_dict["grounding"]
 
         if self.lambda_f > 0 and generated_attn is not None:
-            sent_attn_softmax = torch.softmax(generated_attn, dim=-1)
-            loss_dict["faithfulness"] = self.faithfulness_reg(sent_attn_softmax)
+            # FaithfulnessRegularizer handles renormalisation internally —
+            # pass the raw attention slice (do NOT softmax it first; that
+            # collapses near-zero values to a uniform distribution and the
+            # entropy locks at log(N_v)).
+            loss_dict["faithfulness"] = self.faithfulness_reg(generated_attn)
             total = total + self.lambda_f * loss_dict["faithfulness"]
 
         loss_dict["total"] = total
