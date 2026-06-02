@@ -136,6 +136,12 @@ class GroundedVLM(nn.Module):
         )
         self.llm = get_peft_model(base_llm, lora_cfg)
         self.llm.print_trainable_parameters()
+        # Move the trainable adapter to the LLM's device. Keep it in fp32 so
+        # the optimizer has a clean master copy; HF Trainer autocasts to bf16
+        # inside the forward when mixed_precision: bf16 is configured.
+        # Without this move .load() leaves the adapter on CPU and the first
+        # forward fails with a cross-device matmul error.
+        self.adapter = self.adapter.to(device=device if device != "cpu" else "cpu")
         return self
 
     # ── Forward ──────────────────────────────────────────────────────────────
@@ -176,6 +182,12 @@ class GroundedVLM(nn.Module):
 
         # Embed text tokens using the LLM's embedding table
         text_embeds = self.llm.get_input_embeddings()(input_ids)  # (B, T, llm_dim)
+
+        # Match dtype before concat — the LLM expects a single dtype tensor.
+        # Adapter may be fp32 (training, with optimizer master copy) while
+        # text_embeds comes out of the bf16 LLM embedding table.
+        if vision_embeds.dtype != text_embeds.dtype:
+            vision_embeds = vision_embeds.to(text_embeds.dtype)
 
         # Concatenate: vision first, then text
         inputs_embeds = torch.cat([vision_embeds, text_embeds], dim=1)  # (B, N_v+T, llm_dim)
@@ -237,6 +249,8 @@ class GroundedVLM(nn.Module):
         assert self.llm is not None, "Call .load() before generate()"
         vision_embeds = self.adapter(vision_tokens)
         text_embeds = self.llm.get_input_embeddings()(prompt_input_ids)
+        if vision_embeds.dtype != text_embeds.dtype:
+            vision_embeds = vision_embeds.to(text_embeds.dtype)
         inputs_embeds = torch.cat([vision_embeds, text_embeds], dim=1)
         return self.llm.generate(
             inputs_embeds=inputs_embeds,
@@ -254,7 +268,7 @@ class GroundedVLM(nn.Module):
         """
         os.makedirs(checkpoint_dir, exist_ok=True)
         assert self.llm is not None, "Nothing to save — call .load() first"
-        self.llm.save_pretrained(checkpoint_dir)  # saves LoRA adapter only
+        self.llm.save_pretrained(checkpoint_dir, safe_serialization=False)  # saves LoRA adapter only
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(checkpoint_dir)
         torch.save(self.adapter.state_dict(), os.path.join(checkpoint_dir, "adapter.pt"))
@@ -284,4 +298,7 @@ class GroundedVLM(nn.Module):
         model.adapter.load_state_dict(
             torch.load(os.path.join(checkpoint_dir, "adapter.pt"), map_location="cpu")
         )
+        # Match the LLM dtype so adapter outputs can flow through the bf16 LLM
+        # without a manual cast at every call site (inference path).
+        model.adapter = model.adapter.to(dtype=torch.bfloat16)
         return model
