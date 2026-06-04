@@ -1,6 +1,34 @@
 # Experiments Log
 
-Manually maintained; newest run first. For the full methodology, audit history, and interpretation of these numbers, see [`SMOKE_RUN_REPORT.md`](./SMOKE_RUN_REPORT.md).
+Manually maintained; newest run first. For the full methodology, audit history, and interpretation of these numbers, see [`SMOKE_RUN_REPORT.md`](./SMOKE_RUN_REPORT.md) (smoke campaign) and [`FULLSCALE_RUN_REPORT.md`](./FULLSCALE_RUN_REPORT.md) (50-slide run).
+
+---
+
+## 2026-06-04 02:13 — grounded_fullscale_20260604_021323
+
+- **Config:** `configs/fullscale.yaml`
+- **Hardware:** RunPod RTX A6000 48 GB
+- **Total wall-clock:** ~2 h (download + precompute on 40 new slides + train + 3 evals)
+- **Data:** 50 BCSS-covered DX slides, 35 train / 8 val / 7 test (deterministic seed=42)
+- **Hyperparameters:** lr_adapter=1e-4, lr_lora=5e-5, λ_grounding=0.1, λ_faithfulness=**0.05** (bumped from 0.01), grounding_warmup_epochs=2, gradient_accumulation=**4** (bumped from 2), epochs=8, max_vision_tokens=1024
+- **Final losses (train, last epoch):** caption=1.77, grounding=0.57 (epoch 7), faithfulness=6.93
+- **Test metrics:**
+  - **Caption:** BLEU-4 = **0.0559**, ROUGE-L = **0.1990** (7 slides) — ROUGE-L up 10 % vs smoke v3
+  - **Concentration:** top-1% mass = **0.105** (10× uniform), top-5% mass = **0.149** (3× uniform), top-10% mass = **0.201**, entropy ratio = **0.938** (vs smoke 0.999 — substantially peakier)
+  - **Pointing-game (v2, after key-name fix):** 37 concept-bearing sentences across 7 slides
+    - PG@1 = 0.000 (uniform 0.004) — tied with random
+    - PG@5 = **0.081** (uniform 0.019) — **4.4× lift**
+    - PG@10 = **0.081** (uniform 0.037) — 2.2× lift
+    - PG@20 = **0.108** (uniform 0.071) — 1.5× lift
+- **Notes:**
+  - First run at >10 slides; first time the grounding mechanism produces a non-uniform, BCSS-aligned attention signal.
+  - Caption quality held steady from smoke v3 — no regression from joining caption + grounding + faithfulness objectives.
+  - PG@5 hits are concentrated on slide `TCGA-AO-A128` (3/12 at K=5, 4/12 at K=20); other 6 test slides contribute 0 hits — suggests grounding fidelity is slide-specific at this data scale.
+  - Pointing-game first run reported 0/71 due to a key-name mismatch (`tumor` vs `mask_tumor` in BCSS H5s); fixed and rerun.
+- **W&B run:** `emirardaorigins-istanbul-technical-university/huggingface` (see master log for direct link)
+- **Checkpoint:** `checkpoints/grounded_fullscale_20260604_021323/final`
+- **Result files:** `results/grounded_fullscale_20260604_021323_{caption,grounding,pointing,pointing_v2}.json`
+- **Logs:** `/workspace/logs/fullscale/` (one per phase + master.log)
 
 ---
 
@@ -68,15 +96,20 @@ Manually maintained; newest run first. For the full methodology, audit history, 
 
 ## Run-to-run comparison
 
-| Metric | v1 (broken losses) | v2 (bugs fixed, untuned) | **v3 (retuned + warmup)** |
-|---|---|---|---|
-| caption loss (final) | 1.86 | 5.95 | **1.4 – 2.2** ✅ |
-| grounding loss (final) | 1e-8 (fake) | 2 – 35 (spiky) | **0.5 – 0.7** ✅ |
-| faithfulness loss (final) | 6.93 const | 6.8 | 6.92 |
-| eval_loss (val) | 2.55 | 4.37 | **2.32** ✅ |
-| BLEU-4 | 0.0566 | 0.0055 | **0.0566** |
-| ROUGE-L | 0.1916 | 0.0263 | **0.1808** |
-| top-10 % attn mass | — | 0.161 | 0.124 |
-| entropy ratio | — | 0.988 | 0.999 |
+| Metric | v1 (broken losses) | v2 (bugs fixed, untuned) | v3 (retuned + warmup) | **fullscale (50 slides)** |
+|---|---|---|---|---|
+| Train slides | 8 | 8 | 8 | **35** |
+| Test slides | 10 | 10 | 10 | 7 (held-out) |
+| Epochs | 4 | 4 | 8 | 8 |
+| caption loss (final) | 1.86 | 5.95 | 1.4 – 2.2 | **1.77** ✅ |
+| grounding loss (final) | 1e-8 (fake) | 2 – 35 (spiky) | 0.5 – 0.7 | **0.5 – 0.6** ✅ |
+| faithfulness loss (final) | 6.93 const | 6.8 | 6.92 | 6.93 |
+| BLEU-4 | 0.0566 | 0.0055 | 0.0566 | **0.0559** |
+| ROUGE-L | 0.1916 | 0.0263 | 0.1808 | **0.1990** ✅ |
+| top-1% attn mass | — | — | — | **0.105** (10× uniform) ✅ |
+| top-10% attn mass | — | 0.161 | 0.124 | **0.201** ✅ |
+| entropy ratio | — | 0.988 | 0.999 | **0.938** ✅ (peakier) |
+| **PG@5** | — | — | — | **0.081** vs uniform 0.019 (**4.4×**) ✅ |
+| **PG@10** | — | — | — | **0.081** vs uniform 0.037 (2.2×) ✅ |
 
-v3 is the only run that produces a real (non-no-op) grounding signal while keeping caption quality at the honest v1 level. It is the recommended baseline for the capstone write-up.
+**The fullscale run is the headline.** It is the first run with (a) a measurable PG@K above the uniform-random baseline, (b) a clearly non-uniform attention distribution (entropy ratio 0.938 vs ≈1.0 in all smoke runs), and (c) caption quality that did not regress despite the now-active grounding + faithfulness objectives. PG@5 = 4.4× lift over random is the publishable grounding number for the capstone.
