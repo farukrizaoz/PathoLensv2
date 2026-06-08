@@ -70,23 +70,28 @@ class GroundingLoss(nn.Module):
             scalar grounding loss
         """
         eps = 1e-8
-        # Renormalise the generated attention slice to a proper distribution
-        # over N_v patches (attention weights summed over heads do not sum to 1
-        # because they share probability mass with text-token positions).
-        gen_probs = generated_attn / generated_attn.sum(dim=-1, keepdim=True).clamp(min=eps)
-        # gt is already normalised (sums to 1) by `build_target`; just clamp.
-        gt_probs = gt_attn / gt_attn.sum(dim=-1, keepdim=True).clamp(min=eps)
+        # Attention weights are non-negative by construction (transformer softmax),
+        # but clamp defensively so the normaliser denominator is always positive.
+        gen_nonneg = generated_attn.clamp(min=0)
+        gt_nonneg = gt_attn.clamp(min=0)
+        gen_probs = gen_nonneg / gen_nonneg.sum(dim=-1, keepdim=True).clamp(min=eps)
+        gt_probs = gt_nonneg / gt_nonneg.sum(dim=-1, keepdim=True).clamp(min=eps)
 
         if self.loss_type == "kl":
             # KL(gt || generated). Temperature sharpens both distributions before
             # comparison (lower T -> peakier, harder match).
-            log_gen = torch.log(gen_probs.clamp(min=eps))
+            # Use p^(1/T) sharpening in probability space — avoids log/T amplifying
+            # near-zero log values into ±100s which destabilises logsumexp.
             if self.temperature != 1.0:
-                log_gen = log_gen / self.temperature
-                log_gen = log_gen - log_gen.logsumexp(dim=-1, keepdim=True)
-                gt_sharp = (gt_probs.clamp(min=eps).log() / self.temperature).softmax(dim=-1)
+                inv_t = 1.0 / self.temperature
+                gen_sharp = gen_probs.clamp(min=eps) ** inv_t
+                gen_sharp = gen_sharp / gen_sharp.sum(dim=-1, keepdim=True).clamp(min=eps)
+                gt_sharp = gt_probs.clamp(min=eps) ** inv_t
+                gt_sharp = gt_sharp / gt_sharp.sum(dim=-1, keepdim=True).clamp(min=eps)
             else:
+                gen_sharp = gen_probs
                 gt_sharp = gt_probs
+            log_gen = torch.log(gen_sharp.clamp(min=eps))
             return F.kl_div(log_gen, gt_sharp, reduction="batchmean")
         else:
             # 1 − cosine similarity over the (already non-negative) distributions
@@ -121,8 +126,9 @@ class FaithfulnessRegularizer(nn.Module):
             mean entropy across sentences (to be minimized; lower = peakier).
         """
         eps = 1e-8
-        row_sum = sentence_attentions.sum(dim=-1, keepdim=True).clamp(min=eps)
-        probs = sentence_attentions / row_sum  # proper distribution over N_v
+        nonneg = sentence_attentions.clamp(min=0)
+        row_sum = nonneg.sum(dim=-1, keepdim=True).clamp(min=eps)
+        probs = nonneg / row_sum  # proper distribution over N_v
         entropy = -(probs * torch.log(probs + eps)).sum(dim=-1)
         return entropy.mean()
 
