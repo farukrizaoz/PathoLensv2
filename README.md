@@ -38,6 +38,16 @@ From the full-scale run `grounded_fullscale_20260604_021323` — 50 TCGA-BRCA sl
 
 ---
 
+## Submission Deliverables
+
+| Artifact | Path | Notes |
+|---|---|---|
+| One-page project HTML | [`index.html`](index.html) | Static page with title, team, description, tech stack, results, video placeholder |
+| Project report (Word) | [`report/PathoLens_Report.docx`](report/PathoLens_Report.docx) | Filled-in ITU AI&DE template; rebuildable via `report/build_report.py` |
+| Academic poster (A0) | [`poster/poster.html`](poster/poster.html) | A0 portrait, print to PDF from browser |
+
+---
+
 ## Quick Start
 
 ### Requirements

@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PathoLens-VLM — Academic Poster</title>
+<style>
+  /* ───────────── A0 portrait (841 × 1189 mm) ─────────────
+     Open in Chrome → Print → "Save as PDF" → custom size 841×1189 mm,
+     or set browser zoom to 100% and use the default PDF export.
+  */
+  @page {
+    size: 841mm 1189mm;
+    margin: 0;
+  }
+
+  :root {
+    --navy: #0a2540;
+    --teal: #0d7377;
+    --cyan: #14b8a6;
+    --gold: #f59e0b;
+    --ink: #1a1a2e;
+    --muted: #475569;
+    --line: #cbd5e1;
+    --line-soft: #e2e8f0;
+    --bg: #ffffff;
+    --bg-soft: #f8fafc;
+    --frozen-bg: #e0f2fe;
+    --frozen-bd: #0284c7;
+    --trainable-bg: #fef3c7;
+    --trainable-bd: #d97706;
+    --output-bg: #ccfbf1;
+    --output-bd: #0d9488;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 841mm;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
+    line-height: 1.4;
+  }
+
+  .poster {
+    width: 841mm;
+    min-height: 1189mm;
+    padding: 25mm 30mm 25mm;
+    display: flex;
+    flex-direction: column;
+    gap: 14mm;
+  }
+
+  /* ───────────── HEADER ───────────── */
+  .header {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 15mm;
+    padding-bottom: 10mm;
+    border-bottom: 4mm solid;
+    border-image: linear-gradient(90deg, var(--navy), var(--teal), var(--cyan)) 1;
+  }
+
+  .header-logo {
+    width: 60mm;
+    height: 60mm;
+    border-radius: 8mm;
+    background: linear-gradient(135deg, var(--navy), var(--teal));
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18mm;
+    letter-spacing: -0.04em;
+    font-family: Georgia, serif;
+  }
+
+  .header-text {
+    text-align: left;
+  }
+
+  .header-eyebrow {
+    font-size: 5mm;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--teal);
+    font-weight: 700;
+    margin-bottom: 3mm;
+  }
+
+  h1.poster-title {
+    font-size: 21mm;
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    color: var(--navy);
+    margin-bottom: 5mm;
+  }
+
+  .title-accent {
+    background: linear-gradient(90deg, var(--gold), var(--teal));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .header-team {
+    font-size: 6.5mm;
+    color: var(--ink);
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .header-team .advisor {
+    color: var(--muted);
+    font-style: italic;
+    font-size: 5.5mm;
+  }
+
+  .header-side {
+    text-align: right;
+    color: var(--muted);
+    font-size: 5mm;
+    line-height: 1.5;
+  }
+
+  .header-side strong {
+    color: var(--navy);
+    font-size: 5.5mm;
+    display: block;
+    margin-bottom: 1mm;
+  }
+
+  /* ───────────── BODY GRID ───────────── */
+  .body {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12mm;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 10mm;
+  }
+
+  /* ───────────── CARDS ───────────── */
+  .card {
+    background: var(--bg);
+    border: 0.7mm solid var(--line);
+    border-radius: 4mm;
+    padding: 8mm;
+    box-shadow: 0 2mm 6mm rgba(10, 37, 64, 0.04);
+  }
+
+  .card.soft {
+    background: var(--bg-soft);
+  }
+
+  .card.dark {
+    background: linear-gradient(135deg, var(--navy), var(--teal));
+    color: #fff;
+    border: none;
+  }
+
+  h2.section-h {
+    font-size: 9mm;
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    margin-bottom: 5mm;
+    padding-bottom: 3mm;
+    border-bottom: 1mm solid var(--teal);
+  }
+
+  .card.dark h2.section-h {
+    color: #fff;
+    border-bottom-color: var(--cyan);
+  }
+
+  p, li {
+    font-size: 5.5mm;
+    color: var(--ink);
+    line-height: 1.45;
+    margin-bottom: 4mm;
+  }
+
+  .card.dark p, .card.dark li {
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  ul {
+    padding-left: 6mm;
+  }
+
+  ul li {
+    margin-bottom: 2.5mm;
+  }
+
+  strong { color: var(--navy); }
+  .card.dark strong { color: #fff; }
+
+  /* ───────────── METRIC GRID ───────────── */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6mm;
+    margin-top: 3mm;
+  }
+
+  .metric {
+    background: var(--bg);
+    border: 0.7mm solid var(--line);
+    border-radius: 4mm;
+    padding: 6mm 5mm;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .metric::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1.5mm;
+    background: linear-gradient(90deg, var(--teal), var(--cyan));
+  }
+
+  .metric-label {
+    font-size: 4mm;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 700;
+    margin-bottom: 3mm;
+  }
+
+  .metric-value {
+    font-size: 16mm;
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric-lift {
+    margin-top: 2mm;
+    font-size: 4.5mm;
+    color: var(--teal);
+    font-weight: 700;
+  }
+
+  .metric-baseline {
+    font-size: 4mm;
+    color: var(--muted);
+    margin-top: 1mm;
+  }
+
+  /* ───────────── ARCHITECTURE SVG ───────────── */
+  .arch-svg {
+    width: 100%;
+    height: auto;
+    margin: 3mm 0;
+  }
+
+  .arch-caption {
+    font-size: 4.5mm;
+    color: var(--muted);
+    font-style: italic;
+    text-align: center;
+    margin-top: 3mm;
+  }
+
+  /* ───────────── EQUATION ───────────── */
+  .equation {
+    background: var(--bg-soft);
+    border-left: 2mm solid var(--teal);
+    padding: 5mm 6mm;
+    font-family: "Cambria Math", "Times New Roman", Georgia, serif;
+    font-size: 6mm;
+    color: var(--navy);
+    margin: 4mm 0;
+    border-radius: 0 3mm 3mm 0;
+  }
+
+  /* ───────────── FOOTER ───────────── */
+  .footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12mm;
+    padding-top: 10mm;
+    border-top: 0.7mm solid var(--line);
+    align-items: center;
+  }
+
+  .footer-block { font-size: 4.5mm; color: var(--muted); line-height: 1.6; }
+  .footer-block strong { color: var(--navy); display: block; margin-bottom: 2mm; font-size: 5mm; }
+
+  .qr-box {
+    text-align: center;
+    color: var(--muted);
+    font-size: 4mm;
+  }
+
+  .qr-placeholder {
+    width: 35mm;
+    height: 35mm;
+    background:
+      repeating-linear-gradient(45deg, var(--ink) 0 2mm, transparent 2mm 4mm),
+      repeating-linear-gradient(-45deg, var(--ink) 0 2mm, transparent 2mm 4mm),
+      #fff;
+    border: 0.7mm solid var(--ink);
+    margin: 0 auto 3mm;
+    border-radius: 2mm;
+  }
+
+  /* ───────────── TABLE ───────────── */
+  table.compact {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 4.5mm;
+    margin-top: 3mm;
+  }
+
+  table.compact th, table.compact td {
+    padding: 2.5mm 3mm;
+    text-align: left;
+    border-bottom: 0.4mm solid var(--line-soft);
+  }
+
+  table.compact th {
+    background: var(--bg-soft);
+    color: var(--navy);
+    font-weight: 700;
+    font-size: 4.2mm;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  table.compact td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  /* ───────────── REFS ───────────── */
+  .refs {
+    font-size: 3.8mm;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  .refs li {
+    font-size: 3.8mm;
+    margin-bottom: 1.5mm;
+  }
+</style>
+</head>
+<body>
+
+<div class="poster">
+
+  <!-- ════════════ HEADER ════════════ -->
+  <header class="header">
+    <div class="header-logo">PL</div>
+
+    <div class="header-text">
+      <div class="header-eyebrow">ITU AI &amp; Data Engineering Capstone · 2026</div>
+      <h1 class="poster-title">PathoLens<span class="title-accent">-VLM</span></h1>
+      <div class="header-team">
+        <strong>Faruk Rıza Öz · Emir Arda Eker</strong><br/>
+        <span class="advisor">Advisor: Prof. Dr. Behçet Uğur Töreyin</span>
+      </div>
+    </div>
+
+    <div class="header-side">
+      <strong>Istanbul Technical University</strong>
+      Faculty of Computer<br/>and Informatics<br/>
+      Dept. of AI &amp; Data Engineering
+    </div>
+  </header>
+
+  <!-- ════════════ INTRO / TAGLINE ════════════ -->
+  <section class="card dark">
+    <h2 class="section-h">A Spatially-Grounded Vision-Language Model for Whole-Slide Breast Cancer Pathology Report Generation</h2>
+    <p>
+      Existing pathology VLMs (PathChat, SlideChat, Quilt-LLaVA) produce
+      plausible captions but cannot guarantee <strong>which slide region</strong>
+      each clinical sentence comes from. PathoLens-VLM closes the gap by adding a
+      <strong>KL-divergence grounding loss</strong> that supervises text-to-vision
+      attention against BCSS pixel-level semantic-segmentation masks — yielding
+      measurably better grounding (PG@5 = <strong>4.4×</strong> over uniform).
+    </p>
+  </section>
+
+  <!-- ════════════ BODY (3 columns) ════════════ -->
+  <section class="body">
+
+    <!-- COLUMN 1 -->
+    <div class="col">
+      <article class="card">
+        <h2 class="section-h">1. Motivation</h2>
+        <ul>
+          <li>A whole-slide image (WSI) holds <strong>~10⁹ pixels</strong>; diagnostic claims hinge on sub-millimetre foci.</li>
+          <li>Modern pathology VLMs generate fluent text but provide <strong>no per-sentence spatial grounding</strong>.</li>
+          <li>Clinically, a draft report is only actionable if each sentence is <strong>traceable to a region</strong>.</li>
+          <li>WSI-scale grounded captioning is an <strong>open problem</strong> — radiology has MedGround (2026); histopathology does not.</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <h2 class="section-h">2. Data &amp; Supervision</h2>
+        <ul>
+          <li><strong>TCGA-BRCA</strong> — 50 WSIs (35 train / 8 val / 7 test, seed 42).</li>
+          <li><strong>BCSS</strong> [Amgad &amp; al., 2019] — pixel-level masks for 4 classes (<em>tumor, stroma, lymph, necrosis</em>), CC0 licence.</li>
+          <li><strong>SlideInstruction</strong> — GPT-4 structured captions (reference text).</li>
+          <li>Hybrid GT router: <strong>BCSS</strong> where ROI coverage ≥ 0.2, <strong>CONCH-v1 pseudo-GT</strong> elsewhere.</li>
+        </ul>
+      </article>
+
+      <article class="card soft">
+        <h2 class="section-h">3. Loss Design</h2>
+        <div class="equation">
+          ℒ<sub>total</sub> = ℒ<sub>caption</sub> + λ<sub>g</sub> · ℒ<sub>grounding</sub> + λ<sub>f</sub> · ℒ<sub>faithfulness</sub>
+        </div>
+        <ul>
+          <li><strong>ℒ<sub>caption</sub></strong> — token-level cross-entropy on the response.</li>
+          <li><strong>ℒ<sub>grounding</sub></strong> — KL divergence between per-sentence attention and BCSS / pseudo-GT distribution.</li>
+          <li><strong>ℒ<sub>faithfulness</sub></strong> — Shannon entropy penalty to force concentration.</li>
+          <li><strong>Grounding warmup</strong> — first 2 epochs caption-only; λ<sub>g</sub>, λ<sub>f</sub> linearly ramped after.</li>
+        </ul>
+      </article>
+    </div>
+
+    <!-- COLUMN 2 -->
+    <div class="col">
+      <article class="card">
+        <h2 class="section-h">4. Architecture</h2>
+        <svg class="arch-svg" viewBox="0 0 380 320" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="frozen" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#e0f2fe"/>
+              <stop offset="100%" stop-color="#bae6fd"/>
+            </linearGradient>
+            <linearGradient id="trainable" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fef3c7"/>
+              <stop offset="100%" stop-color="#fde68a"/>
+            </linearGradient>
+            <linearGradient id="output" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ccfbf1"/>
+              <stop offset="100%" stop-color="#5eead4"/>
+            </linearGradient>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+            </marker>
+          </defs>
+
+          <!-- WSI -->
+          <rect x="20" y="10" width="340" height="38" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="190" y="30" text-anchor="middle" font-size="11" font-weight="700" fill="#0a2540">Whole-Slide Image (WSI)</text>
+          <text x="190" y="43" text-anchor="middle" font-size="9" fill="#475569">.svs · ~50K×50K px · 3–7K patches @20×</text>
+
+          <line x1="190" y1="48" x2="190" y2="62" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+          <!-- CONCHv1.5 -->
+          <rect x="20" y="62" width="340" height="38" rx="6" fill="url(#frozen)" stroke="#0284c7" stroke-width="1.2"/>
+          <text x="190" y="82" text-anchor="middle" font-size="11" font-weight="700" fill="#0c4a6e">CONCHv1.5 patch encoder</text>
+          <text x="190" y="95" text-anchor="middle" font-size="9" fill="#0369a1" font-style="italic">FROZEN · ViT-L · 304M · output 768-dim</text>
+
+          <line x1="190" y1="100" x2="190" y2="114" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+          <!-- Adapter -->
+          <rect x="60" y="114" width="260" height="32" rx="6" fill="url(#trainable)" stroke="#d97706" stroke-width="1.2"/>
+          <text x="190" y="131" text-anchor="middle" font-size="11" font-weight="700" fill="#78350f">Linear Adapter (768 → 3072)</text>
+          <text x="190" y="143" text-anchor="middle" font-size="9" fill="#92400e" font-style="italic">TRAINABLE · ~5M params</text>
+
+          <line x1="190" y1="146" x2="190" y2="160" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+          <!-- Llama -->
+          <rect x="60" y="160" width="260" height="46" rx="6" fill="url(#trainable)" stroke="#d97706" stroke-width="1.2"/>
+          <text x="190" y="178" text-anchor="middle" font-size="11" font-weight="700" fill="#78350f">Llama-3.2-3B-Instruct + LoRA (r=16)</text>
+          <text x="190" y="192" text-anchor="middle" font-size="9" fill="#92400e">3B frozen (4-bit NF4) · ~10M LoRA params</text>
+          <text x="190" y="202" text-anchor="middle" font-size="9" fill="#92400e" font-style="italic">attention layer 14 → grounding signal</text>
+
+          <line x1="120" y1="206" x2="100" y2="232" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <line x1="260" y1="206" x2="280" y2="232" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+          <!-- Output 1: report -->
+          <rect x="20" y="232" width="155" height="42" rx="6" fill="url(#output)" stroke="#0d9488" stroke-width="1.2"/>
+          <text x="98" y="252" text-anchor="middle" font-size="11" font-weight="700" fill="#0f766e">Structured Report</text>
+          <text x="98" y="266" text-anchor="middle" font-size="9" fill="#115e59" font-style="italic">FHIR DiagnosticReport JSON</text>
+
+          <!-- Output 2: heatmap -->
+          <rect x="205" y="232" width="155" height="42" rx="6" fill="url(#output)" stroke="#0d9488" stroke-width="1.2"/>
+          <text x="283" y="252" text-anchor="middle" font-size="11" font-weight="700" fill="#0f766e">Per-sentence Heatmap</text>
+          <text x="283" y="266" text-anchor="middle" font-size="9" fill="#115e59" font-style="italic">attention over input patches</text>
+
+          <!-- Legend -->
+          <g transform="translate(20, 295)">
+            <rect width="10" height="10" rx="2" fill="url(#frozen)" stroke="#0284c7"/>
+            <text x="14" y="9" font-size="8" fill="#475569">Frozen (pretrained)</text>
+            <rect x="115" width="10" height="10" rx="2" fill="url(#trainable)" stroke="#d97706"/>
+            <text x="129" y="9" font-size="8" fill="#475569">Trainable (~15M)</text>
+            <rect x="225" width="10" height="10" rx="2" fill="url(#output)" stroke="#0d9488"/>
+            <text x="239" y="9" font-size="8" fill="#475569">Output</text>
+          </g>
+        </svg>
+        <p class="arch-caption">
+          Vision tokens are CONCHv1.5 patch embeddings (not TITAN slide tokens), preserving
+          1-to-1 correspondence with patch-level grounding GT.
+        </p>
+      </article>
+
+      <article class="card">
+        <h2 class="section-h">5. Training</h2>
+        <table class="compact">
+          <thead>
+            <tr><th>Setting</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>GPU</td><td class="num">RTX A6000 (48 GB)</td></tr>
+            <tr><td>Epochs</td><td class="num">8</td></tr>
+            <tr><td>Batch × grad-accum</td><td class="num">1 × 4</td></tr>
+            <tr><td>Quantisation</td><td class="num">NF4 4-bit (bnb)</td></tr>
+            <tr><td>λ<sub>g</sub> / λ<sub>f</sub></td><td class="num">0.10 / 0.05</td></tr>
+            <tr><td>Grounding warmup</td><td class="num">2 epochs</td></tr>
+            <tr><td>Max vision tokens</td><td class="num">1024</td></tr>
+            <tr><td>Wall-clock</td><td class="num">&lt; 12 h</td></tr>
+          </tbody>
+        </table>
+      </article>
+    </div>
+
+    <!-- COLUMN 3 -->
+    <div class="col">
+      <article class="card">
+        <h2 class="section-h">6. Headline Results</h2>
+        <p>Held-out test set: 7 BCSS-annotated TCGA-BRCA slides (disjoint from training).</p>
+        <table class="compact">
+          <thead>
+            <tr><th>Metric</th><th>Value</th><th>Baseline</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>BLEU-4</td><td class="num">0.0559</td><td>—</td></tr>
+            <tr><td>ROUGE-L</td><td class="num">0.1990</td><td>—</td></tr>
+            <tr><td><strong>PG@5</strong> (BCSS)</td><td class="num">0.081</td><td>0.019 (4.4×)</td></tr>
+            <tr><td>PG@10</td><td class="num">0.081</td><td>0.037 (2.2×)</td></tr>
+            <tr><td>Top-10 % attn mass</td><td class="num">0.201</td><td>0.100 (2.0×)</td></tr>
+            <tr><td>Entropy ratio</td><td class="num">0.938</td><td>1.000 (peakier)</td></tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="card soft">
+        <h2 class="section-h">7. Discussion</h2>
+        <ul>
+          <li><strong>Measurable grounding.</strong> PG@5 lifts <strong>4.4×</strong> over uniform; attention is substantially peakier (entropy 0.938 &lt; 1.0).</li>
+          <li><strong>Slide-specific fidelity.</strong> Pointing-game hits concentrate on a single slide (<em>TCGA-AO-A128</em>, 3/12 hits @5); other 6 slides contribute 0 → grounding is non-uniform across slides.</li>
+          <li><strong>Caption quality preserved.</strong> BLEU-4 and ROUGE-L match the published smoke-run baseline; adding the grounding loss does not degrade fluency.</li>
+          <li><strong>Reproducibility.</strong> 51 / 51 unit + integration tests pass; YAML configs + W&amp;B logs ship in the repo.</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <h2 class="section-h">8. Future Work</h2>
+        <ul>
+          <li><strong>Faithfulness intervention test</strong> — zero out top-K patches, measure BLEU drop.</li>
+          <li><strong>Concept F1</strong> — per-class recall vs BCSS coverage.</li>
+          <li>Scale from 50 → 151 slides (full BCSS cohort).</li>
+          <li>Layer-sweep validation (attn layers 8, 14, 20).</li>
+          <li>Q-Former adapter ablation.</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <!-- ════════════ HEADLINE METRICS BAR ════════════ -->
+  <section class="card dark">
+    <h2 class="section-h">Headline numbers at a glance</h2>
+    <div class="metrics-row">
+      <div class="metric">
+        <div class="metric-label">BLEU-4</div>
+        <div class="metric-value">0.056</div>
+        <div class="metric-baseline">test caption quality</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">ROUGE-L</div>
+        <div class="metric-value">0.199</div>
+        <div class="metric-baseline">test caption quality</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">PG@5</div>
+        <div class="metric-value">0.081</div>
+        <div class="metric-lift">4.4× uniform</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Top-10% Mass</div>
+        <div class="metric-value">0.201</div>
+        <div class="metric-lift">2.0× uniform</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Trainable Params</div>
+        <div class="metric-value">~15M</div>
+        <div class="metric-baseline">of 3.3B total</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════ FOOTER ════════════ -->
+  <footer class="footer">
+    <div class="footer-block refs">
+      <strong>Key References (IEEE)</strong>
+      <ol class="refs">
+        <li>Lu et al., “PathChat,” <em>Nature</em>, 2024.</li>
+        <li>Chen et al., “SlideChat,” <em>CVPR</em>, 2025.</li>
+        <li>Wu et al., “MedGround,” <em>arXiv:2601.06847</em>, 2026.</li>
+        <li>MahmoodLab, “CONCHv1.5,” <em>HF Hub</em>, 2024.</li>
+        <li>Hu et al., “LoRA,” <em>ICLR</em>, 2022.</li>
+        <li>Amgad et al., “BCSS,” <em>GigaScience</em>, 2019.</li>
+        <li>Zhang, “Direct Visual Grounding,” <em>arXiv:2511.12738</em>, 2025.</li>
+      </ol>
+    </div>
+
+    <div class="footer-block">
+      <strong>Stack</strong>
+      Python 3.11 · PyTorch 2.5 · CUDA 12.4 ·
+      HuggingFace Transformers + PEFT (LoRA) ·
+      bitsandbytes (4-bit) · OpenSlide ·
+      h5py · Weights &amp; Biases · Streamlit ·
+      FHIR DiagnosticReport.
+    </div>
+
+    <div class="qr-box">
+      <div class="qr-placeholder"></div>
+      github.com/farukrizaoz/PathoLensv2
+      <br/><span style="font-size:3.5mm; color: var(--muted);">Open source · MIT licence · Repro instructions in README</span>
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>

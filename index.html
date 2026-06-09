@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="PathoLens-VLM: spatially-grounded vision-language model for whole-slide breast cancer pathology report generation. ITU AI & Data Engineering Capstone 2026." />
+<title>PathoLens-VLM — Grounded Pathology Report Generation</title>
+<style>
+  :root {
+    --navy: #0a2540;
+    --teal: #0d7377;
+    --cyan: #14b8a6;
+    --gold: #f59e0b;
+    --ink: #1a1a2e;
+    --muted: #5b6b7c;
+    --line: #e2e8f0;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --shadow: 0 4px 24px rgba(10, 37, 64, 0.08);
+    --shadow-lg: 0 12px 40px rgba(10, 37, 64, 0.12);
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ────────── Hero ────────── */
+  .hero {
+    background:
+      radial-gradient(ellipse at top right, rgba(20, 184, 166, 0.18), transparent 60%),
+      radial-gradient(ellipse at bottom left, rgba(245, 158, 11, 0.12), transparent 60%),
+      linear-gradient(135deg, #0a2540 0%, #0d7377 100%);
+    color: #fff;
+    padding: 4rem 2rem 3rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 25% 30%, rgba(255, 255, 255, 0.04) 1.5px, transparent 2px),
+      radial-gradient(circle at 75% 70%, rgba(255, 255, 255, 0.03) 1.5px, transparent 2px),
+      radial-gradient(circle at 50% 90%, rgba(255, 255, 255, 0.025) 1px, transparent 1.5px);
+    background-size: 80px 80px, 120px 120px, 60px 60px;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  .badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 1.4rem;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    background: rgba(255, 255, 255, 0.13);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    backdrop-filter: blur(8px);
+  }
+
+  .badge .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan);
+  }
+
+  h1.title {
+    font-size: clamp(1.9rem, 4.4vw, 3.2rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.6rem;
+  }
+
+  .title-accent {
+    background: linear-gradient(90deg, #f59e0b 0%, #14b8a6 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .subtitle {
+    font-size: clamp(1rem, 1.6vw, 1.2rem);
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.85);
+    max-width: 780px;
+    margin-bottom: 2rem;
+  }
+
+  .team {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  .team-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .team-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 600;
+  }
+
+  .team-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  /* ────────── Container ────────── */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 4rem 2rem;
+  }
+
+  section { margin-bottom: 4.5rem; }
+  section:last-child { margin-bottom: 0; }
+
+  h2.section-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 0.4rem;
+    letter-spacing: -0.01em;
+  }
+
+  h2.section-title::before {
+    content: "";
+    display: inline-block;
+    width: 4px; height: 24px;
+    background: linear-gradient(180deg, var(--teal), var(--cyan));
+    border-radius: 2px;
+    margin-right: 0.7rem;
+    vertical-align: -4px;
+  }
+
+  .section-lead {
+    color: var(--muted);
+    font-size: 1rem;
+    max-width: 760px;
+    margin-bottom: 2rem;
+  }
+
+  /* ────────── Cards ────────── */
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 1.6rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--line);
+  }
+
+  /* ────────── Description grid ────────── */
+  .desc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.2rem;
+  }
+
+  .desc-card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 1.6rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--teal);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .desc-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .desc-icon {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(13, 115, 119, 0.12), rgba(20, 184, 166, 0.08));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.9rem;
+    color: var(--teal);
+  }
+
+  .desc-card h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 0.4rem;
+  }
+
+  .desc-card p {
+    font-size: 0.92rem;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  /* ────────── Architecture diagram ────────── */
+  .arch-wrap {
+    background: linear-gradient(135deg, #ffffff, #f0f7f7);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 2rem 1.5rem;
+    box-shadow: var(--shadow);
+  }
+
+  .arch-svg {
+    width: 100%;
+    height: auto;
+    max-width: 900px;
+    margin: 0 auto;
+    display: block;
+  }
+
+  .arch-note {
+    margin-top: 1.2rem;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* ────────── Results ────────── */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1rem;
+  }
+
+  .metric {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 1.5rem 1.3rem;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .metric::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--teal), var(--cyan));
+  }
+
+  .metric-label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+
+  .metric-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1;
+    margin-bottom: 0.3rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric-lift {
+    font-size: 0.82rem;
+    color: var(--teal);
+    font-weight: 600;
+  }
+
+  .metric-baseline {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 0.3rem;
+  }
+
+  .results-meta {
+    margin-top: 1.5rem;
+    padding: 1rem 1.2rem;
+    background: rgba(13, 115, 119, 0.05);
+    border-left: 3px solid var(--teal);
+    border-radius: 0 8px 8px 0;
+    font-size: 0.88rem;
+    color: var(--muted);
+  }
+
+  .results-meta strong { color: var(--navy); }
+
+  /* ────────── Tech stack ────────── */
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.2rem;
+  }
+
+  .tech-group {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 1.4rem;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+  }
+
+  .tech-group h4 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--teal);
+    font-weight: 700;
+    margin-bottom: 0.9rem;
+  }
+
+  .tech-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .tech-chip {
+    background: #f1f5f9;
+    color: var(--navy);
+    padding: 0.32rem 0.7rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border: 1px solid #e2e8f0;
+    transition: background 0.15s;
+  }
+
+  .tech-chip:hover { background: #e2e8f0; }
+
+  /* ────────── Outcomes ────────── */
+  .outcomes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .outcome-card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 1.8rem;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+
+  .outcome-num {
+    position: absolute;
+    top: 1.2rem; right: 1.4rem;
+    font-size: 2.4rem;
+    font-weight: 800;
+    color: var(--line);
+    line-height: 1;
+    font-family: Georgia, serif;
+  }
+
+  .outcome-card h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 0.7rem;
+    padding-right: 2.4rem;
+  }
+
+  .outcome-card p {
+    font-size: 0.9rem;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  .outcome-card ul {
+    margin-top: 0.6rem;
+    padding-left: 1.1rem;
+  }
+
+  .outcome-card li {
+    font-size: 0.88rem;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+
+  /* ────────── Video ────────── */
+  .video-wrap {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 1.6rem;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+
+  .video-embed {
+    position: relative;
+    width: 100%;
+    max-width: 800px;
+    margin: 1rem auto 0;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .video-embed iframe,
+  .video-embed .video-placeholder {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  .video-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    color: rgba(255, 255, 255, 0.85);
+    gap: 1rem;
+    text-align: center;
+    padding: 2rem;
+  }
+
+  .play-icon {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+  }
+
+  /* ────────── Footer ────────── */
+  footer {
+    background: var(--navy);
+    color: rgba(255, 255, 255, 0.75);
+    padding: 2.5rem 2rem;
+    margin-top: 4rem;
+  }
+
+  .footer-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 2rem;
+  }
+
+  .footer-block h5 {
+    color: #fff;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.8rem;
+  }
+
+  .footer-block p,
+  .footer-block a {
+    font-size: 0.88rem;
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    line-height: 1.7;
+    display: block;
+  }
+
+  .footer-block a:hover { color: var(--cyan); }
+
+  .footer-bottom {
+    max-width: 1200px;
+    margin: 1.8rem auto 0;
+    padding-top: 1.4rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.5);
+    text-align: center;
+  }
+
+  /* ────────── Print ────────── */
+  @media print {
+    .hero { background: var(--navy) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .metric, .desc-card, .outcome-card, .tech-group { break-inside: avoid; }
+  }
+
+  /* ────────── Responsive ────────── */
+  @media (max-width: 640px) {
+    .hero { padding: 3rem 1.2rem 2rem; }
+    .container { padding: 3rem 1.2rem; }
+    section { margin-bottom: 3rem; }
+    .team { gap: 1rem; }
+    h2.section-title { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ HERO ═══════════════════════ -->
+<header class="hero">
+  <div class="hero-inner">
+    <div class="badge-row">
+      <span class="badge"><span class="dot"></span>ITU AI &amp; Data Engineering Capstone</span>
+      <span class="badge">2026</span>
+      <span class="badge">Vision-Language Model</span>
+      <span class="badge">Computational Pathology</span>
+    </div>
+
+    <h1 class="title">
+      PathoLens<span class="title-accent">-VLM</span>
+    </h1>
+
+    <p class="subtitle">
+      A spatially-grounded vision-language model that generates breast cancer pathology
+      reports from whole-slide images and guarantees which slide region each clinical
+      sentence originates from.
+    </p>
+
+    <div class="team">
+      <div class="team-block">
+        <span class="team-label">Project Team</span>
+        <span class="team-name">Faruk Rıza Öz</span>
+      </div>
+      <div class="team-block">
+        <span class="team-label">&nbsp;</span>
+        <span class="team-name">Emir Arda Eker</span>
+      </div>
+      <div class="team-block">
+        <span class="team-label">Academic Advisor</span>
+        <span class="team-name">Prof. Dr. Behçet Uğur Töreyin</span>
+      </div>
+      <div class="team-block">
+        <span class="team-label">Institution</span>
+        <span class="team-name">Istanbul Technical University</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- ═══════════════════════ PROJECT DESCRIPTION ═══════════════════════ -->
+  <section id="description">
+    <h2 class="section-title">Project Description</h2>
+    <p class="section-lead">
+      Existing pathology vision-language models (PathChat, SlideChat, Quilt-LLaVA) produce
+      plausible captions but cannot guarantee <em>which slide region</em> each clinical
+      claim came from. PathoLens-VLM closes this grounding gap by adding a trainable
+      grounding-aware report generation head on top of frozen foundation models.
+    </p>
+
+    <div class="desc-grid">
+      <div class="desc-card">
+        <div class="desc-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <h3>Problem</h3>
+        <p>Pathology AI reports lack accountability — clinicians cannot verify which tissue area justifies each diagnostic sentence.</p>
+      </div>
+
+      <div class="desc-card">
+        <div class="desc-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <h3>Approach</h3>
+        <p>A KL-divergence grounding loss supervises the LLM's text-to-vision attention against BCSS semantic segmentation masks during fine-tuning.</p>
+      </div>
+
+      <div class="desc-card">
+        <div class="desc-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        </div>
+        <h3>Architecture</h3>
+        <p>CONCHv1.5 patch encoder (frozen) → linear adapter → Llama-3.2-3B + LoRA. Only ~15M parameters trainable; 304M+3B frozen.</p>
+      </div>
+
+      <div class="desc-card">
+        <div class="desc-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <h3>Verification</h3>
+        <p>BCSS pointing-game evaluation on held-out test slides yields a 4.4× lift over uniform attention — a measurable grounding signal.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ ARCHITECTURE ═══════════════════════ -->
+  <section id="architecture">
+    <h2 class="section-title">System Architecture</h2>
+    <p class="section-lead">
+      An end-to-end pipeline from whole-slide image to FHIR-formatted pathology report
+      with per-sentence attention heatmaps. Vision tokens are CONCHv1.5 patch embeddings
+      (not TITAN slide tokens) to preserve 1:1 correspondence with patch-level grounding GT.
+    </p>
+
+    <div class="arch-wrap">
+      <svg class="arch-svg" viewBox="0 0 900 360" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="frozen" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#e0f2fe"/>
+            <stop offset="100%" stop-color="#bae6fd"/>
+          </linearGradient>
+          <linearGradient id="trainable" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fef3c7"/>
+            <stop offset="100%" stop-color="#fde68a"/>
+          </linearGradient>
+          <linearGradient id="output" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ccfbf1"/>
+            <stop offset="100%" stop-color="#5eead4"/>
+          </linearGradient>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+          </marker>
+        </defs>
+
+        <!-- WSI input -->
+        <rect x="20" y="140" width="120" height="80" rx="10" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="80" y="175" text-anchor="middle" font-size="13" font-weight="600" fill="#0a2540">WSI</text>
+        <text x="80" y="193" text-anchor="middle" font-size="10" fill="#475569">.svs · 50K×50K px</text>
+        <text x="80" y="207" text-anchor="middle" font-size="10" fill="#475569">~3–7K patches</text>
+
+        <!-- Arrow 1 -->
+        <line x1="140" y1="180" x2="180" y2="180" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- CONCHv1.5 (frozen) -->
+        <rect x="180" y="140" width="150" height="80" rx="10" fill="url(#frozen)" stroke="#0284c7" stroke-width="1.5"/>
+        <text x="255" y="170" text-anchor="middle" font-size="13" font-weight="700" fill="#0c4a6e">CONCHv1.5</text>
+        <text x="255" y="186" text-anchor="middle" font-size="10" fill="#0c4a6e">Patch encoder · 768-d</text>
+        <text x="255" y="205" text-anchor="middle" font-size="9" fill="#0369a1" font-style="italic">FROZEN · 304M</text>
+
+        <!-- Arrow 2 -->
+        <line x1="330" y1="180" x2="370" y2="180" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- Adapter (trainable) -->
+        <rect x="370" y="140" width="120" height="80" rx="10" fill="url(#trainable)" stroke="#d97706" stroke-width="1.5"/>
+        <text x="430" y="170" text-anchor="middle" font-size="13" font-weight="700" fill="#78350f">Adapter</text>
+        <text x="430" y="186" text-anchor="middle" font-size="10" fill="#78350f">Linear 768→3072</text>
+        <text x="430" y="205" text-anchor="middle" font-size="9" fill="#92400e" font-style="italic">TRAINABLE · 5M</text>
+
+        <!-- Arrow 3 -->
+        <line x1="490" y1="180" x2="530" y2="180" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- Llama (trainable LoRA) -->
+        <rect x="530" y="140" width="160" height="80" rx="10" fill="url(#trainable)" stroke="#d97706" stroke-width="1.5"/>
+        <text x="610" y="167" text-anchor="middle" font-size="13" font-weight="700" fill="#78350f">Llama-3.2-3B</text>
+        <text x="610" y="183" text-anchor="middle" font-size="10" fill="#78350f">+ LoRA r=16</text>
+        <text x="610" y="205" text-anchor="middle" font-size="9" fill="#92400e" font-style="italic">10M LoRA · 3B frozen</text>
+
+        <!-- Arrow 4 split -->
+        <line x1="690" y1="160" x2="740" y2="100" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <line x1="690" y1="200" x2="740" y2="260" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- Output 1: Report -->
+        <rect x="740" y="60" width="140" height="80" rx="10" fill="url(#output)" stroke="#0d9488" stroke-width="1.5"/>
+        <text x="810" y="92" text-anchor="middle" font-size="13" font-weight="700" fill="#0f766e">Pathology</text>
+        <text x="810" y="108" text-anchor="middle" font-size="13" font-weight="700" fill="#0f766e">Report</text>
+        <text x="810" y="126" text-anchor="middle" font-size="9" fill="#115e59" font-style="italic">Structured · FHIR-ready</text>
+
+        <!-- Output 2: Heatmap -->
+        <rect x="740" y="220" width="140" height="80" rx="10" fill="url(#output)" stroke="#0d9488" stroke-width="1.5"/>
+        <text x="810" y="252" text-anchor="middle" font-size="13" font-weight="700" fill="#0f766e">Per-sentence</text>
+        <text x="810" y="268" text-anchor="middle" font-size="13" font-weight="700" fill="#0f766e">Heatmap</text>
+        <text x="810" y="286" text-anchor="middle" font-size="9" fill="#115e59" font-style="italic">Layer-14 attention</text>
+
+        <!-- Legend -->
+        <g transform="translate(20, 320)">
+          <rect width="14" height="14" rx="3" fill="url(#frozen)" stroke="#0284c7"/>
+          <text x="22" y="11" font-size="11" fill="#475569">Frozen (pretrained)</text>
+          <rect x="160" width="14" height="14" rx="3" fill="url(#trainable)" stroke="#d97706"/>
+          <text x="182" y="11" font-size="11" fill="#475569">Trainable (~15M params)</text>
+          <rect x="370" width="14" height="14" rx="3" fill="url(#output)" stroke="#0d9488"/>
+          <text x="392" y="11" font-size="11" fill="#475569">Output</text>
+        </g>
+
+        <!-- Loss callout -->
+        <g transform="translate(540, 290)">
+          <rect x="0" y="0" width="150" height="40" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1" stroke-dasharray="3,3"/>
+          <text x="75" y="17" text-anchor="middle" font-size="10" font-weight="600" fill="#991b1b">L_grounding (KL)</text>
+          <text x="75" y="30" text-anchor="middle" font-size="9" fill="#991b1b">attn ↔ BCSS masks</text>
+        </g>
+      </svg>
+
+      <p class="arch-note">
+        Inference: WSI → CONCHv1.5 (frozen) → Adapter → Llama+LoRA → grounded pathology report
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ RESULTS ═══════════════════════ -->
+  <section id="results">
+    <h2 class="section-title">Project Outcomes — Headline Results</h2>
+    <p class="section-lead">
+      Full-scale training run on 50 BCSS-annotated TCGA-BRCA slides (35 train / 8 val / 7 test).
+      Evaluated on held-out slides disjoint from training — measuring generalisation, not memorisation.
+    </p>
+
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="metric-label">BLEU-4</div>
+        <div class="metric-value">0.0559</div>
+        <div class="metric-baseline">Test caption quality</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">ROUGE-L</div>
+        <div class="metric-value">0.1990</div>
+        <div class="metric-baseline">Test caption quality</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">PG@5 (BCSS)</div>
+        <div class="metric-value">0.081</div>
+        <div class="metric-lift">4.4× over uniform</div>
+        <div class="metric-baseline">Baseline: 0.019</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Top-10% Mass</div>
+        <div class="metric-value">0.201</div>
+        <div class="metric-lift">2.0× over uniform</div>
+        <div class="metric-baseline">Baseline: 0.100</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Entropy Ratio</div>
+        <div class="metric-value">0.938</div>
+        <div class="metric-baseline">1.0 = uniform (lower = peakier)</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Trainable Params</div>
+        <div class="metric-value">~15M</div>
+        <div class="metric-baseline">Adapter + LoRA only</div>
+      </div>
+    </div>
+
+    <div class="results-meta">
+      <strong>Run:</strong> <code>grounded_fullscale_20260604_021323</code> ·
+      8 epochs · RunPod RTX A6000 48 GB · λ_g=0.1, λ_f=0.05, grounding warmup = 2 epochs ·
+      All 51 unit/integration tests pass.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ TECH STACK ═══════════════════════ -->
+  <section id="tech">
+    <h2 class="section-title">Technologies Used</h2>
+    <p class="section-lead">
+      Reproducible Python stack with strict local/cloud discipline: code developed and tested
+      locally; training and embedding precompute on RunPod RTX A6000.
+    </p>
+
+    <div class="tech-grid">
+      <div class="tech-group">
+        <h4>Core Stack</h4>
+        <div class="tech-list">
+          <span class="tech-chip">Python 3.11</span>
+          <span class="tech-chip">PyTorch 2.5</span>
+          <span class="tech-chip">CUDA 12.4</span>
+          <span class="tech-chip">uv</span>
+        </div>
+      </div>
+
+      <div class="tech-group">
+        <h4>Foundation Models</h4>
+        <div class="tech-list">
+          <span class="tech-chip">CONCHv1.5</span>
+          <span class="tech-chip">TITAN</span>
+          <span class="tech-chip">Llama-3.2-3B</span>
+          <span class="tech-chip">GrandQC</span>
+        </div>
+      </div>
+
+      <div class="tech-group">
+        <h4>Training / ML Ops</h4>
+        <div class="tech-list">
+          <span class="tech-chip">HuggingFace Transformers</span>
+          <span class="tech-chip">PEFT (LoRA)</span>
+          <span class="tech-chip">bitsandbytes (4-bit)</span>
+          <span class="tech-chip">accelerate</span>
+          <span class="tech-chip">Weights &amp; Biases</span>
+        </div>
+      </div>
+
+      <div class="tech-group">
+        <h4>Whole-Slide Imaging</h4>
+        <div class="tech-list">
+          <span class="tech-chip">OpenSlide</span>
+          <span class="tech-chip">OpenCV</span>
+          <span class="tech-chip">HDF5 / h5py</span>
+          <span class="tech-chip">NumPy</span>
+        </div>
+      </div>
+
+      <div class="tech-group">
+        <h4>Evaluation</h4>
+        <div class="tech-list">
+          <span class="tech-chip">BLEU-4 / ROUGE-L</span>
+          <span class="tech-chip">Pointing Game (BCSS)</span>
+          <span class="tech-chip">Attention Entropy</span>
+          <span class="tech-chip">Concept Recall</span>
+        </div>
+      </div>
+
+      <div class="tech-group">
+        <h4>App &amp; Deployment</h4>
+        <div class="tech-list">
+          <span class="tech-chip">Streamlit</span>
+          <span class="tech-chip">FHIR DiagnosticReport</span>
+          <span class="tech-chip">Typer CLI</span>
+          <span class="tech-chip">pytest</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ OUTCOMES / DELIVERABLES ═══════════════════════ -->
+  <section id="outcomes">
+    <h2 class="section-title">Deliverables &amp; Demo</h2>
+    <p class="section-lead">
+      Beyond the metrics, the project ships a reproducible code base, a working
+      interactive demo, and full documentation for replication.
+    </p>
+
+    <div class="outcomes">
+      <div class="outcome-card">
+        <span class="outcome-num">01</span>
+        <h3>Trained Model Checkpoint</h3>
+        <p>End-to-end trained PathoLens-VLM checkpoint validated on held-out TCGA-BRCA slides:</p>
+        <ul>
+          <li>Adapter + LoRA weights (~60 MB)</li>
+          <li>Loadable via <code>GroundedVLM.from_pretrained()</code></li>
+          <li>Reproducible via <code>configs/fullscale.yaml</code></li>
+        </ul>
+      </div>
+
+      <div class="outcome-card">
+        <span class="outcome-num">02</span>
+        <h3>Interactive Streamlit Demo</h3>
+        <p>Browser-based demo that lets a user:</p>
+        <ul>
+          <li>Pick a precomputed slide</li>
+          <li>Generate a structured pathology report</li>
+          <li>Inspect per-sentence attention heatmaps</li>
+          <li>Download a FHIR DiagnosticReport JSON</li>
+        </ul>
+      </div>
+
+      <div class="outcome-card">
+        <span class="outcome-num">03</span>
+        <h3>Evaluation Suite</h3>
+        <p>Five complementary metrics covering quality, grounding, and faithfulness:</p>
+        <ul>
+          <li>BLEU-4 / ROUGE-L (caption quality)</li>
+          <li>BCSS pointing-game (spatial grounding)</li>
+          <li>Attention concentration &amp; entropy</li>
+          <li>Faithfulness intervention test</li>
+          <li>Concept recall (tumor/stroma/lymph/necrosis)</li>
+        </ul>
+      </div>
+
+      <div class="outcome-card">
+        <span class="outcome-num">04</span>
+        <h3>Reproducible Pipeline</h3>
+        <p>Open-source repository with full automation:</p>
+        <ul>
+          <li>Single-command training: <code>make train-grounded</code></li>
+          <li>Single-command evaluation: <code>make eval</code></li>
+          <li>5 ablation configurations (caption / grounding × KL / cosine)</li>
+          <li>51 passing unit &amp; integration tests</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ VIDEO PRESENTATION ═══════════════════════ -->
+  <section id="video">
+    <h2 class="section-title">Presentation Video</h2>
+    <p class="section-lead">
+      Two-minute project summary on YouTube — overview, architecture, key results, and live demo.
+    </p>
+
+    <div class="video-wrap">
+      <div class="video-embed">
+        <!-- TODO: Replace YOUR_VIDEO_ID with the actual YouTube video ID once uploaded -->
+        <!-- <iframe src="https://www.youtube.com/embed/YOUR_VIDEO_ID" title="PathoLens-VLM Project Summary" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe> -->
+
+        <div class="video-placeholder">
+          <div class="play-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </div>
+          <div>
+            <div style="font-size: 1.05rem; font-weight: 600; margin-bottom: 0.3rem;">YouTube video to be embedded</div>
+            <div style="font-size: 0.82rem; opacity: 0.7;">Replace the placeholder with the iframe once the 2-minute summary is uploaded.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-block">
+      <h5>Project</h5>
+      <p>PathoLens-VLM</p>
+      <p style="opacity: 0.6; font-size: 0.78rem;">Senior Capstone · 2026</p>
+    </div>
+
+    <div class="footer-block">
+      <h5>Institution</h5>
+      <p>Istanbul Technical University</p>
+      <p>Faculty of Computer and Informatics</p>
+      <p>Dept. of AI and Data Engineering</p>
+    </div>
+
+    <div class="footer-block">
+      <h5>Team</h5>
+      <p>Faruk Rıza Öz</p>
+      <p>Emir Arda Eker</p>
+      <p style="opacity: 0.7;">Advisor: Prof. Dr. Behçet Uğur Töreyin</p>
+    </div>
+
+    <div class="footer-block">
+      <h5>Resources</h5>
+      <a href="https://github.com/farukrizaoz/PathoLensv2" target="_blank" rel="noopener">GitHub Repository →</a>
+      <a href="https://huggingface.co/MahmoodLab/conchv1_5" target="_blank" rel="noopener">CONCHv1.5 Model →</a>
+      <a href="https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct" target="_blank" rel="noopener">Llama-3.2-3B →</a>
+    </div>
+  </div>
+
+  <div class="footer-bottom">
+    © 2026 PathoLens-VLM · Open-source under research license · Built with PyTorch &amp; HuggingFace
+  </div>
+</footer>
+
+</body>
+</html>
