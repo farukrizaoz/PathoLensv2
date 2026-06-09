@@ -1,12 +1,15 @@
-"""CAMELYON16 pointing game evaluation.
+"""CAMELYON16 pointing game evaluation (not run — dataset is 150 GB).
 
-For each generated sentence containing tumor-related terms (e.g., "metastasis", "carcinoma"):
-    1. Extract per-sentence attention heatmap
-    2. Get top-K attended patches
-    3. Check if any of top-K patches overlap with CAMELYON16 tumor mask
-    4. PG@K = fraction of sentences with successful pointing
+The evaluated grounding metric for this project is the **BCSS pointing game**
+implemented in `bcss_pointing_game.py`, which uses the same TCGA-BRCA slides as
+training and requires no additional download.  Fullscale result: PG@5 = 0.081
+vs uniform 0.019 (4.4× lift).  See `docs/FULLSCALE_RUN_REPORT.md`.
 
-To be implemented in Hafta 4.
+This module is retained as a scaffold for future CAMELYON16 cross-dataset
+evaluation.  Running it requires:
+  1. CAMELYON16 embeddings at `data/processed/embeddings/camelyon16/`
+  2. CAMELYON16 tumor polygon XML files at `data/raw/camelyon16/`
+  3. Pre-converted patch-level masks via `data/camelyon_xml_to_mask.py`
 """
 
 from __future__ import annotations
@@ -24,11 +27,23 @@ def main(
     checkpoint: str = typer.Option(..., help="Path to model checkpoint"),
     camelyon_dir: str = typer.Option(..., help="Path to data/processed/embeddings/camelyon16"),
     top_k_values: list[int] = typer.Option([1, 5, 10], help="K values for PG@K"),
-    output_json: str = typer.Option("results/pointing_game.json"),
+    output_json: str = typer.Option("results/pointing_game_camelyon.json"),
 ) -> None:
-    """Run pointing game evaluation."""
-    logger.info(f"Evaluating {checkpoint} on CAMELYON16")
-    raise NotImplementedError("Implement in Hafta 4")
+    """CAMELYON16 pointing game (scaffold — dataset not downloaded).
+
+    For the published grounding evaluation use bcss_pointing_game instead:
+
+        uv run python -m patholens.evaluation.bcss_pointing_game --help
+
+    PG@5 = 0.081 vs uniform 0.019 (4.4× lift) from the fullscale run.
+    See docs/FULLSCALE_RUN_REPORT.md for details.
+    """
+    logger.warning(
+        "CAMELYON16 pointing game not run: dataset (150 GB) was not downloaded. "
+        "Use bcss_pointing_game.py for the published PG@K results. "
+        "See docs/FULLSCALE_RUN_REPORT.md."
+    )
+    raise SystemExit(0)
 
 
 if __name__ == "__main__":

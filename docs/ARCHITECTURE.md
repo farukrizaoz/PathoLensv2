@@ -271,30 +271,48 @@ CAMELYON16 was the original plan but was dropped for training after design revie
 
 ## Hyperparameters
 
-```yaml
-optimizer: AdamW
-lr_adapter: 1e-4      # 2× LoRA lr — adapter adapts faster
-lr_lora: 5e-5
-weight_decay: 0.01
-warmup_steps: 100
-scheduler: cosine
-batch_size: 1         # variable N_v per slide; collate keeps vision tokens as list
-gradient_accumulation: 16   # effective batch = 16
-epochs: 3
-mixed_precision: bf16
-gradient_checkpointing: true  # applied manually (not via TrainingArguments) for 4-bit compat
+Two sets of hyperparameters are relevant: the original ablation grid (five configs in `configs/`) and the fullscale tuned values that produced the published headline results.
 
-lambda_grounding: 0.3
-lambda_faithfulness: 0.1
+| Parameter | Ablation configs | **Fullscale (published)** |
+|---|---|---|
+| optimizer | AdamW | AdamW |
+| lr_adapter | 1e-4 | 1e-4 |
+| lr_lora | 5e-5 | 5e-5 |
+| weight_decay | 0.01 | 0.01 |
+| warmup_steps | 100 | 8 |
+| scheduler | cosine | cosine |
+| batch_size | 1 | 1 |
+| gradient_accumulation | 16 | **4** |
+| epochs | 3 | **8** |
+| mixed_precision | bf16 | bf16 |
+| gradient_checkpointing | true | true |
+| **lambda_grounding** | 0.3 | **0.1** |
+| **lambda_faithfulness** | 0.1 | **0.05** |
+| **grounding_warmup_epochs** | 0 | **2.0** |
+| lora_r | 16 | 16 |
+| lora_alpha | 32 | 32 |
+| lora_dropout | 0.05 | 0.05 |
+| target_modules | q/k/v/o_proj | q/k/v/o_proj |
+| max_vision_tokens | 1024 | 1024 |
+| attn_layer | 14 | 14 |
 
-lora_r: 16
-lora_alpha: 32
-lora_dropout: 0.05
-target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+### Grounding Loss Warmup
 
-max_vision_tokens: 1024   # cap on patch count fed to LLM
-attn_layer: 14            # Llama layer index for grounding attention extraction
-```
+`grounding_warmup_epochs` delays the grounding loss until caption training has stabilised. For the first N epochs only `L_caption` is active; `λ_g` and `λ_f` are linearly ramped in from 0 after the warmup period. This prevents the grounding signal (which is noisy early in training) from dominating before the LLM has learned to generate coherent pathology text.
+
+The fullscale run used `grounding_warmup_epochs=2.0` — grounding loss entered at epoch 2 and was effective by epoch 3 (grounding loss dropped from ~11.8 to ~0.26 between epochs 2 and 5).
+
+### Published Results (`configs/fullscale.yaml`, 50 slides)
+
+| Metric | Value | Comparison |
+|---|---|---|
+| BLEU-4 (test) | **0.0559** | smoke v3: 0.0566 — held steady |
+| ROUGE-L (test) | **0.1990** | smoke v3: 0.1808 — +10% |
+| PG@5 (BCSS) | **0.081** | uniform: 0.019 — **4.4× lift** |
+| Top-10% attn mass | **0.201** | smoke v3: 0.124 — +62% |
+| Entropy ratio | **0.938** | smoke v3: 0.999 — substantially peakier |
+
+Full run report: `docs/FULLSCALE_RUN_REPORT.md`
 
 ---
 
@@ -309,13 +327,15 @@ attn_layer: 14            # Llama layer index for grounding attention extraction
 ### Spatial Grounding
 | Metric | Tool | Ground Truth |
 |--------|------|-------------|
-| Pointing Game @5, @10 (PG@K) | `evaluation/pointing_game.py` | CAMELYON16 pixel masks |
-| Faithfulness (intervention drop) | `evaluation/intervention_test.py` | Top-K patch masking |
+| Pointing Game @K (BCSS) ✅ | `evaluation/bcss_pointing_game.py` | BCSS pixel masks — used in fullscale run |
+| Attention concentration, entropy ratio ✅ | `evaluation/concentration_metric.py` | — (unsupervised) |
+| Pointing Game @K (CAMELYON16) | `evaluation/pointing_game.py` | CAMELYON16 pixel masks _(not run — 150 GB dataset)_ |
+| Faithfulness (intervention drop) | `evaluation/intervention_test.py` | Top-K patch masking _(planned)_ |
 
 ### Clinical Concept Accuracy
 | Metric | Tool | Ground Truth |
 |--------|------|-------------|
-| Concept-F1 (grade/subtype/margin/ER/PR/HER2) | `evaluation/concept_f1.py` | SlideInstruction structured fields |
+| Concept recall (tumor/stroma/lymph/necrosis) | `evaluation/concept_f1.py` | BCSS concept labels _(planned)_ |
 
 ---
 

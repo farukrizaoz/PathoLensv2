@@ -20,6 +20,24 @@ Existing pathology VLMs (PathChat, SlideChat, Quilt-LLaVA) produce plausible cap
 
 ---
 
+## Headline Results
+
+From the full-scale run `grounded_fullscale_20260604_021323` — 50 TCGA-BRCA slides (35 train / 8 val / 7 test), `configs/fullscale.yaml`:
+
+| Metric | Value | Baseline |
+|---|---|---|
+| BLEU-4 (test, 7 slides) | **0.0559** | — |
+| ROUGE-L (test, 7 slides) | **0.1990** | — |
+| PG@5 (BCSS pointing game) | **0.081** | uniform: 0.019 (**4.4× lift**) |
+| PG@10 | **0.081** | uniform: 0.037 (2.2×) |
+| Top-10% attention mass | **0.201** | uniform: 0.100 (2.0×) |
+| Entropy ratio | **0.938** | uniform: 1.000 (lower = peakier) |
+
+> Full run report: [`docs/FULLSCALE_RUN_REPORT.md`](docs/FULLSCALE_RUN_REPORT.md)
+> Smoke run history (bug audit + 3-run campaign): [`docs/SMOKE_RUN_REPORT.md`](docs/SMOKE_RUN_REPORT.md)
+
+---
+
 ## Quick Start
 
 ### Requirements
@@ -161,9 +179,11 @@ make eval   # runs all four eval modules
 | Metric | Module | Ground Truth |
 |---|---|---|
 | BLEU-4, ROUGE-L | `evaluation/caption_metrics.py` | SlideInstruction captions |
-| Pointing Game @5, @10 | `evaluation/pointing_game.py` | CAMELYON16 tumor masks |
-| Faithfulness (intervention) | `evaluation/intervention_test.py` | Top-K patch masking |
-| Concept-F1 (grade/subtype/margin/ER/PR/HER2) | `evaluation/concept_f1.py` | TCGA clinical TSV |
+| Attention concentration, entropy ratio | `evaluation/concentration_metric.py` | — (unsupervised) |
+| Pointing Game @K (BCSS) | `evaluation/bcss_pointing_game.py` | BCSS pixel masks ✅ used in fullscale |
+| Pointing Game @K (CAMELYON16) | `evaluation/pointing_game.py` | CAMELYON16 tumor masks _(not run — 150 GB dataset)_ |
+| Faithfulness (intervention drop) | `evaluation/intervention_test.py` | Top-K patch masking _(planned)_ |
+| Concept recall (tumor/stroma/lymph/necrosis) | `evaluation/concept_f1.py` | BCSS concept labels _(planned)_ |
 
 Results are logged to `docs/EXPERIMENTS.md` via `/log-experiment`.
 
