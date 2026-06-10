@@ -358,6 +358,157 @@
     font-size: 3.8mm;
     margin-bottom: 1.5mm;
   }
+
+  /* ───────────── COMPARISON TABLE (vs Prior Work) ───────────── */
+  table.compare {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 4.6mm;
+    margin-top: 3mm;
+  }
+
+  table.compare th, table.compare td {
+    padding: 2.5mm 2mm;
+    text-align: center;
+    border-bottom: 0.4mm solid var(--line-soft);
+  }
+
+  table.compare th {
+    background: var(--bg-soft);
+    color: var(--navy);
+    font-weight: 700;
+    font-size: 4mm;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  table.compare td:first-child, table.compare th:first-child {
+    text-align: left;
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  table.compare tr.us {
+    background: linear-gradient(90deg, rgba(13, 115, 119, 0.10), rgba(20, 184, 166, 0.06));
+  }
+
+  table.compare tr.us td {
+    font-weight: 700;
+    color: var(--navy);
+  }
+
+  .check { color: var(--teal); font-weight: 800; font-size: 5.5mm; }
+  .cross { color: #ef4444; font-weight: 700; }
+  .partial { color: var(--gold); font-weight: 700; }
+
+  /* ───────────── SAMPLE OUTPUT MOCK ───────────── */
+  .sample-mock {
+    display: grid;
+    grid-template-columns: 80mm 1fr;
+    gap: 6mm;
+    margin-top: 4mm;
+    align-items: stretch;
+  }
+
+  .slide-mock {
+    position: relative;
+    width: 80mm;
+    height: 60mm;
+    border-radius: 3mm;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 30% 35%, rgba(244, 114, 182, 0.55), transparent 22mm),
+      radial-gradient(circle at 65% 60%, rgba(192, 132, 252, 0.45), transparent 30mm),
+      radial-gradient(circle at 50% 80%, rgba(253, 186, 116, 0.35), transparent 25mm),
+      linear-gradient(135deg, #fbcfe8, #ddd6fe 50%, #fed7aa);
+    border: 0.5mm solid var(--line);
+  }
+
+  .slide-mock::after {
+    content: "Slide thumbnail (mock)";
+    position: absolute;
+    bottom: 2mm; left: 2mm;
+    font-size: 3mm;
+    color: rgba(0,0,0,0.45);
+    background: rgba(255,255,255,0.7);
+    padding: 0.5mm 1.5mm;
+    border-radius: 1mm;
+  }
+
+  .heat-overlay {
+    position: absolute;
+    border: 0.6mm dashed var(--teal);
+    background: rgba(20, 184, 166, 0.18);
+    border-radius: 2mm;
+  }
+
+  .heat-overlay::after {
+    content: attr(data-label);
+    position: absolute;
+    top: -5mm; left: 0;
+    font-size: 3mm;
+    background: var(--teal);
+    color: #fff;
+    padding: 0.5mm 1.5mm;
+    border-radius: 1mm;
+    white-space: nowrap;
+    font-weight: 700;
+  }
+
+  .sample-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3mm;
+    font-size: 4.5mm;
+  }
+
+  .sample-line {
+    background: var(--bg-soft);
+    border-left: 1.5mm solid var(--teal);
+    padding: 3mm 4mm;
+    border-radius: 0 2mm 2mm 0;
+    color: var(--ink);
+    line-height: 1.4;
+  }
+
+  .sample-line .sent-marker {
+    display: inline-block;
+    background: var(--teal);
+    color: #fff;
+    font-weight: 800;
+    font-size: 3.5mm;
+    padding: 0.5mm 2mm;
+    border-radius: 1mm;
+    margin-right: 2mm;
+    vertical-align: middle;
+  }
+
+  .sample-line.alt { border-left-color: var(--gold); }
+  .sample-line.alt .sent-marker { background: var(--gold); }
+
+  /* ───────────── PG@K BAR CHART ───────────── */
+  .lift-chart {
+    width: 100%;
+    height: auto;
+    margin-top: 4mm;
+  }
+
+  .lift-chart-legend {
+    display: flex;
+    gap: 6mm;
+    justify-content: center;
+    margin-top: 2mm;
+    font-size: 3.8mm;
+    color: var(--muted);
+  }
+
+  .lift-chart-legend .sw {
+    display: inline-block;
+    width: 4mm; height: 4mm;
+    border-radius: 1mm;
+    vertical-align: middle;
+    margin-right: 1.5mm;
+  }
 </style>
 </head>
 <body>
@@ -412,8 +563,58 @@
         </ul>
       </article>
 
+      <article class="card soft">
+        <h2 class="section-h">2. vs Prior Work</h2>
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>System</th>
+              <th>Whole-Slide</th>
+              <th>Free-form</th>
+              <th>Grounded</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>PathChat [1]</td>
+              <td><span class="partial">tile</span></td>
+              <td><span class="check">✓</span></td>
+              <td><span class="cross">✗</span></td>
+            </tr>
+            <tr>
+              <td>SlideChat [2]</td>
+              <td><span class="check">✓</span></td>
+              <td><span class="check">✓</span></td>
+              <td><span class="cross">✗</span></td>
+            </tr>
+            <tr>
+              <td>Quilt-LLaVA [3]</td>
+              <td><span class="partial">tile</span></td>
+              <td><span class="check">✓</span></td>
+              <td><span class="cross">✗</span></td>
+            </tr>
+            <tr>
+              <td>MedGround [4] <em>(CXR)</em></td>
+              <td><span class="partial">n/a</span></td>
+              <td><span class="check">✓</span></td>
+              <td><span class="check">✓</span></td>
+            </tr>
+            <tr class="us">
+              <td>PathoLens-VLM</td>
+              <td><span class="check">✓</span></td>
+              <td><span class="check">✓</span></td>
+              <td><span class="check">✓</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="margin-top: 4mm; font-size: 4.5mm;">
+          <strong>First WSI-scale free-form grounded pathology VLM</strong>
+          with patch-level attention supervision.
+        </p>
+      </article>
+
       <article class="card">
-        <h2 class="section-h">2. Data &amp; Supervision</h2>
+        <h2 class="section-h">3. Data &amp; Supervision</h2>
         <ul>
           <li><strong>TCGA-BRCA</strong> — 50 WSIs (35 train / 8 val / 7 test, seed 42).</li>
           <li><strong>BCSS</strong> [Amgad &amp; al., 2019] — pixel-level masks for 4 classes (<em>tumor, stroma, lymph, necrosis</em>), CC0 licence.</li>
@@ -423,7 +624,7 @@
       </article>
 
       <article class="card soft">
-        <h2 class="section-h">3. Loss Design</h2>
+        <h2 class="section-h">4. Loss Design</h2>
         <div class="equation">
           ℒ<sub>total</sub> = ℒ<sub>caption</sub> + λ<sub>g</sub> · ℒ<sub>grounding</sub> + λ<sub>f</sub> · ℒ<sub>faithfulness</sub>
         </div>
@@ -439,7 +640,7 @@
     <!-- COLUMN 2 -->
     <div class="col">
       <article class="card">
-        <h2 class="section-h">4. Architecture</h2>
+        <h2 class="section-h">5. Architecture</h2>
         <svg class="arch-svg" viewBox="0 0 380 320" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <linearGradient id="frozen" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -516,7 +717,35 @@
       </article>
 
       <article class="card">
-        <h2 class="section-h">5. Training</h2>
+        <h2 class="section-h">6. Sample Output</h2>
+        <div class="sample-mock">
+          <div class="slide-mock">
+            <div class="heat-overlay"
+                 data-label="S1 · tumour"
+                 style="top: 25%; left: 18%; width: 26%; height: 28%;"></div>
+            <div class="heat-overlay"
+                 data-label="S2 · stroma"
+                 style="top: 55%; left: 55%; width: 30%; height: 22%; border-color: var(--gold); background: rgba(245, 158, 11, 0.18);"></div>
+          </div>
+          <div class="sample-text">
+            <div class="sample-line">
+              <span class="sent-marker">S1</span>
+              Invasive ductal carcinoma, moderately differentiated, with sheets of pleomorphic tumour cells.
+            </div>
+            <div class="sample-line alt">
+              <span class="sent-marker">S2</span>
+              Adjacent desmoplastic stroma shows mild lymphocytic infiltrate.
+            </div>
+            <p style="font-size: 4mm; color: var(--muted); margin-top: 1mm;">
+              Each generated sentence is bound to a slide region by the layer-14 attention
+              extracted from Llama-3.2-3B (mock visualisation).
+            </p>
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2 class="section-h">7. Training</h2>
         <table class="compact">
           <thead>
             <tr><th>Setting</th><th>Value</th></tr>
@@ -538,7 +767,7 @@
     <!-- COLUMN 3 -->
     <div class="col">
       <article class="card">
-        <h2 class="section-h">6. Headline Results</h2>
+        <h2 class="section-h">8. Headline Results</h2>
         <p>Held-out test set: 7 BCSS-annotated TCGA-BRCA slides (disjoint from training).</p>
         <table class="compact">
           <thead>
@@ -553,10 +782,67 @@
             <tr><td>Entropy ratio</td><td class="num">0.938</td><td>1.000 (peakier)</td></tr>
           </tbody>
         </table>
+
+        <!-- PG@K lift bar chart -->
+        <svg class="lift-chart" viewBox="0 0 380 160" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PG@K bar chart">
+          <!-- Y-axis grid + label -->
+          <g font-size="9" fill="#94a3b8" font-family="inherit">
+            <line x1="40" y1="20" x2="40" y2="135" stroke="#cbd5e1" stroke-width="0.8"/>
+            <line x1="40" y1="135" x2="370" y2="135" stroke="#cbd5e1" stroke-width="0.8"/>
+            <text x="35" y="24" text-anchor="end">0.12</text>
+            <text x="35" y="64" text-anchor="end">0.08</text>
+            <text x="35" y="104" text-anchor="end">0.04</text>
+            <text x="35" y="138" text-anchor="end">0</text>
+            <line x1="40" y1="20" x2="370" y2="20" stroke="#e2e8f0" stroke-width="0.5" stroke-dasharray="2,2"/>
+            <line x1="40" y1="60" x2="370" y2="60" stroke="#e2e8f0" stroke-width="0.5" stroke-dasharray="2,2"/>
+            <line x1="40" y1="100" x2="370" y2="100" stroke="#e2e8f0" stroke-width="0.5" stroke-dasharray="2,2"/>
+          </g>
+
+          <!-- K=1 group -->
+          <g>
+            <rect x="62" y="131" width="28" height="4"  fill="#0d7377" rx="1"/>
+            <rect x="92" y="131" width="28" height="4"  fill="#cbd5e1" rx="1"/>
+            <text x="91" y="148" text-anchor="middle" font-size="10" fill="#0a2540" font-weight="700">K=1</text>
+          </g>
+
+          <!-- K=5 group: PathoLens 0.081 → ~81/0.12*115 = 77.6px height; Uniform 0.019 → 18.2px -->
+          <g>
+            <rect x="142" y="58"  width="28" height="77" fill="#0d7377" rx="1"/>
+            <text x="156" y="55"  text-anchor="middle" font-size="9" fill="#0d7377" font-weight="700">0.081</text>
+            <rect x="172" y="117" width="28" height="18" fill="#cbd5e1" rx="1"/>
+            <text x="186" y="114" text-anchor="middle" font-size="9" fill="#94a3b8">0.019</text>
+            <text x="171" y="148" text-anchor="middle" font-size="10" fill="#0a2540" font-weight="700">K=5</text>
+            <text x="171" y="159" text-anchor="middle" font-size="9" fill="#0d7377" font-weight="700">4.4×</text>
+          </g>
+
+          <!-- K=10 group -->
+          <g>
+            <rect x="222" y="58"  width="28" height="77" fill="#0d7377" rx="1"/>
+            <text x="236" y="55"  text-anchor="middle" font-size="9" fill="#0d7377" font-weight="700">0.081</text>
+            <rect x="252" y="100" width="28" height="35" fill="#cbd5e1" rx="1"/>
+            <text x="266" y="97"  text-anchor="middle" font-size="9" fill="#94a3b8">0.037</text>
+            <text x="251" y="148" text-anchor="middle" font-size="10" fill="#0a2540" font-weight="700">K=10</text>
+            <text x="251" y="159" text-anchor="middle" font-size="9" fill="#0d7377" font-weight="700">2.2×</text>
+          </g>
+
+          <!-- K=20 group: PathoLens 0.108 → ~103px; Uniform 0.071 → 68px -->
+          <g>
+            <rect x="302" y="32"  width="28" height="103" fill="#0d7377" rx="1"/>
+            <text x="316" y="29"  text-anchor="middle" font-size="9" fill="#0d7377" font-weight="700">0.108</text>
+            <rect x="332" y="67"  width="28" height="68"  fill="#cbd5e1" rx="1"/>
+            <text x="346" y="64"  text-anchor="middle" font-size="9" fill="#94a3b8">0.071</text>
+            <text x="331" y="148" text-anchor="middle" font-size="10" fill="#0a2540" font-weight="700">K=20</text>
+            <text x="331" y="159" text-anchor="middle" font-size="9" fill="#0d7377" font-weight="700">1.5×</text>
+          </g>
+        </svg>
+        <div class="lift-chart-legend">
+          <span><span class="sw" style="background: #0d7377;"></span>PathoLens-VLM</span>
+          <span><span class="sw" style="background: #cbd5e1;"></span>Uniform baseline</span>
+        </div>
       </article>
 
       <article class="card soft">
-        <h2 class="section-h">7. Discussion</h2>
+        <h2 class="section-h">9. Discussion</h2>
         <ul>
           <li><strong>Measurable grounding.</strong> PG@5 lifts <strong>4.4×</strong> over uniform; attention is substantially peakier (entropy 0.938 &lt; 1.0).</li>
           <li><strong>Slide-specific fidelity.</strong> Pointing-game hits concentrate on a single slide (<em>TCGA-AO-A128</em>, 3/12 hits @5); other 6 slides contribute 0 → grounding is non-uniform across slides.</li>
@@ -566,7 +852,7 @@
       </article>
 
       <article class="card">
-        <h2 class="section-h">8. Future Work</h2>
+        <h2 class="section-h">10. Future Work</h2>
         <ul>
           <li><strong>Faithfulness intervention test</strong> — zero out top-K patches, measure BLEU drop.</li>
           <li><strong>Concept F1</strong> — per-class recall vs BCSS coverage.</li>
