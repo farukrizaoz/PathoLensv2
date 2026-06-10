@@ -199,46 +199,38 @@ SUBMISSION_DATE = "June, 2026"
 
 SUMMARY_BODY: list[tuple[str, str]] = [
     (
-        "PathoLens-VLM is a vision-language model that generates structured "
-        "diagnostic reports for whole-slide images of breast cancer tissue and "
-        "explicitly grounds each generated sentence to the slide region that "
-        "supports it. Existing pathology report-generation systems "
-        "(PathChat, SlideChat, Quilt-LLaVA) can produce fluent captions but "
-        "cannot indicate which area of the slide each sentence comes from, "
-        "which prevents their use in any safety-critical clinical workflow.",
+        "Pathology report-generation systems built on vision-language models "
+        "(PathChat, SlideChat, Quilt-LLaVA) produce fluent text but offer no "
+        "way to verify which region of the slide each clinical claim came "
+        "from. In a setting where a diagnosis can hinge on a sub-millimetre "
+        "focus, this absence of spatial grounding blocks safe clinical "
+        "deployment.",
         "Normal",
     ),
     (
-        "The proposed system combines three components: a frozen CONCHv1.5 "
-        "patch encoder that converts each 448×448 tile of the slide into a "
-        "768-dimensional embedding; a trainable linear adapter that projects "
-        "those embeddings into the hidden space of the language model; and a "
-        "Llama-3.2-3B-Instruct language model fine-tuned with Low-Rank "
-        "Adaptation (LoRA). During training, a KL-divergence grounding loss "
-        "supervises the language model’s text-to-vision attention against "
-        "pixel-level BCSS semantic segmentation masks where available and a "
-        "CONCH-v1 cross-modal pseudo-ground-truth otherwise. A grounding "
-        "warmup schedule and an entropy-based faithfulness regulariser are "
-        "added to stabilise training and force attention concentration.",
+        "PathoLens-VLM closes that gap for breast-cancer histopathology. "
+        "The system pairs a frozen CONCHv1.5 patch encoder with a "
+        "Llama-3.2-3B-Instruct language model through a single linear "
+        "adapter; LoRA matrices and the adapter are the only trainable "
+        "parameters (about 15 million of 3.3 billion). A KL-divergence loss "
+        "aligns the language model’s per-sentence text-to-vision attention "
+        "with BCSS pixel-level segmentation masks during fine-tuning, "
+        "falling back to a CONCH-v1 cross-modal pseudo-target where masks "
+        "are unavailable. A two-epoch warmup and an entropy regulariser "
+        "stabilise the early epochs and concentrate the attention "
+        "distribution.",
         "Normal",
     ),
     (
-        "On a held-out test set of seven BCSS-annotated TCGA-BRCA slides, "
-        "PathoLens-VLM achieves BLEU-4 = 0.0559, ROUGE-L = 0.1990 and a BCSS "
-        "pointing-game accuracy of PG@5 = 0.081, a 4.4× lift over the "
-        "uniform-random baseline of 0.019. The attention distribution is "
-        "substantially peakier than uniform (entropy ratio 0.938; top-10 % "
-        "attention mass 0.201 vs uniform 0.100). Only ~15 M parameters are "
-        "trainable (~5 M adapter + ~10 M LoRA); the remaining 3.3 B parameters "
-        "of the language model and patch encoder are frozen, keeping the "
-        "training cost on a single A6000 GPU within 12 hours.",
-        "Normal",
-    ),
-    (
-        "The system is delivered as an open-source repository with five "
-        "ablation configurations, a Streamlit demonstration application that "
-        "produces FHIR DiagnosticReport JSON output, and 51 passing unit "
-        "and integration tests.",
+        "On seven held-out TCGA-BRCA slides the model achieves "
+        "BLEU-4 = 0.0559 and ROUGE-L = 0.1990, comparable to ungrounded "
+        "baselines on the same corpus, alongside a BCSS pointing-game "
+        "accuracy of PG@5 = 0.081, a 4.4× lift over the uniform-random "
+        "baseline of 0.019. The attention distribution is peakier than "
+        "uniform (entropy ratio 0.938; top-10 % mass 0.201). The project "
+        "ships as an open-source repository with five ablation "
+        "configurations, a Streamlit demonstration that exports FHIR "
+        "DiagnosticReport JSON, and 51 passing unit and integration tests.",
         "Normal",
     ),
 ]
@@ -248,145 +240,133 @@ SUMMARY_BODY: list[tuple[str, str]] = [
 
 INTRODUCTION_BODY: list[tuple[str, str]] = [
     (
-        "Digital pathology has emerged as one of the most active application "
-        "domains for medical artificial intelligence, with whole-slide images "
-        "(WSIs) now routinely scanned at resolutions exceeding 50,000 × 50,000 "
-        "pixels per slide. A single pathologist examines on the order of 10–80 "
-        "such slides per working day, and the manual drafting of the "
-        "associated diagnostic report is among the most time-consuming and "
-        "error-prone tasks in the clinical workflow. The recent emergence of "
-        "vision-language models (VLMs), large language models (LLMs) augmented "
-        "with a vision encoder, has therefore raised the prospect of automatic "
-        "draft report generation directly from a WSI, both as a triage aid "
-        "and as a quality-control second reader.",
+        "Whole-slide images (WSIs) routinely exceed 50,000 × 50,000 pixels "
+        "per slide, and a pathologist who reads 30 to 80 slides a day spends "
+        "a substantial share of clinical time drafting structured diagnostic "
+        "reports. Vision-language models, large language models conditioned "
+        "on image embeddings, have become an active candidate for automatic "
+        "draft-report generation, both as a triage aid and as a second "
+        "reader for quality control.",
         "Normal",
     ),
     (
-        "A number of pathology-specific VLMs have appeared in the past two "
-        "years, the most prominent being PathChat [1], SlideChat [2] and "
-        "Quilt-LLaVA [3]. These systems can produce fluent, plausible "
-        "captions for a slide and answer free-form questions about its "
-        "contents. However, they share a critical limitation that prevents "
-        "their use in any safety-critical clinical context: the generated "
-        "report carries no explicit link back to the slide region that each "
-        "clinical claim originates from. A pathologist confronted with the "
-        "sentence “moderate stromal lymphocytic infiltrate is present” must "
-        "accept the model’s word for it, without any way to inspect the "
-        "supporting evidence on the slide. In a discipline where the "
-        "diagnostic conclusion routinely depends on the appearance of a "
-        "0.1 mm² focus inside a 1 cm² section, this absence of spatial "
-        "grounding is not a stylistic preference; it is a structural barrier "
-        "to clinical adoption.",
+        "The pathology-specific VLMs of the past two years, including "
+        "PathChat [1], SlideChat [2] and Quilt-LLaVA [3], produce fluent "
+        "reports and answer free-form questions about a slide. None of them "
+        "indicates which slide region each generated sentence came from. A "
+        "clinician reading the sentence “moderate stromal lymphocytic "
+        "infiltrate is present” has no way to inspect the supporting "
+        "evidence on the slide. Diagnostic conclusions in breast pathology "
+        "often turn on the appearance of sub-millimetre foci inside a "
+        "1 cm² section; the absence of per-sentence spatial grounding is a "
+        "structural barrier to clinical deployment, not a stylistic "
+        "shortcoming.",
         "Normal",
     ),
     (
-        "Spatially-grounded report generation has been studied in the "
-        "radiology literature, where the recent MedGround model [4] aligns "
-        "each report sentence with a bounding box on the source image. The "
-        "histopathology equivalent is substantially harder for two reasons. "
-        "First, a WSI contains three to four orders of magnitude more pixels "
-        "than a chest X-ray, so the candidate regions run into the thousands "
-        "of patches per slide. Second, while radiology benefits from large "
-        "datasets of paired reports and pixel-level abnormality masks, "
-        "histopathology has very few publicly available datasets that combine "
-        "free-text reports with patch-level semantic segmentation.",
+        "Spatially grounded report generation has been studied in radiology. "
+        "MedGround [4] aligns each report sentence to a bounding box on the "
+        "source X-ray. The histopathology analogue is harder. A WSI contains "
+        "three to four orders of magnitude more pixels than a chest "
+        "radiograph, so the candidate regions expand from tens to thousands "
+        "of patches per slide. Public histopathology datasets pairing "
+        "free-text reports with patch-level segmentation labels remain few, "
+        "small, and licence-restricted.",
         "Normal",
     ),
     ("Research Question", "Heading 2"),
     (
         "The central research question of this capstone project is the "
-        "following: can a vision-language model for whole-slide breast cancer "
-        "pathology produce a free-form diagnostic report in which every "
-        "clinical sentence is explicitly grounded to the slide region that "
-        "supports it, and can this grounding be measured by an objective "
+        "following: can a vision-language model for whole-slide breast "
+        "cancer pathology produce a free-form diagnostic report in which "
+        "every clinical sentence is explicitly grounded to the slide region "
+        "supporting it, and can this grounding be measured by an objective "
         "metric on a held-out test set? The question is deliberately "
-        "constructive: rather than asking whether post-hoc explainability "
-        "tools (e.g., Grad-CAM, attention rollout) can be applied to an "
-        "existing pathology VLM, we ask whether the grounding signal can be "
-        "built into the training objective itself, so that the model learns "
-        "to attend to the correct slide region as part of producing the "
+        "constructive. Rather than asking whether post-hoc explainability "
+        "tools (Grad-CAM, attention rollout) can be applied to an existing "
+        "pathology VLM, we ask whether the grounding signal can be built "
+        "into the training objective itself, so that the model learns to "
+        "attend to the correct slide region as part of producing the "
         "sentence.",
         "Normal",
     ),
     ("Contributions", "Heading 2"),
     (
-        "This work presents PathoLens-VLM, a spatially-grounded vision-language "
-        "model for whole-slide breast cancer pathology report generation. "
-        "The specific contributions are as follows.",
+        "This work presents PathoLens-VLM, a vision-language model that "
+        "generates breast-cancer pathology reports for whole slides and "
+        "grounds each generated sentence to the slide region supporting it. "
+        "The specific contributions are the following.",
         "Normal",
     ),
     (
-        "First, a grounded VLM architecture for whole-slide pathology. "
-        "PathoLens-VLM combines the frozen CONCHv1.5 patch encoder [5], a "
-        "trainable linear adapter, and the Llama-3.2-3B-Instruct language "
-        "model [6] with LoRA fine-tuning [7]. The architecture preserves "
-        "one-to-one correspondence between LLM vision tokens and patch-level "
-        "grounding ground truth, which is a prerequisite for the supervised "
-        "grounding loss.",
+        "A grounded VLM architecture for whole-slide pathology. PathoLens-VLM "
+        "pairs the frozen CONCHv1.5 patch encoder [5] with the "
+        "Llama-3.2-3B-Instruct language model [6], bridged by a single "
+        "linear adapter and fine-tuned with LoRA [7]. The architecture "
+        "deliberately preserves a one-to-one correspondence between LLM "
+        "vision tokens and patch-level grounding ground truth, a "
+        "prerequisite for the supervised grounding loss.",
         "Normal",
     ),
     (
-        "Second, a hybrid grounding supervision strategy. A KL-divergence "
-        "grounding loss supervises the LLM’s text-to-vision attention against "
-        "a two-source ground-truth distribution: pixel-level BCSS semantic "
-        "segmentation masks [8] where available, and a CONCH-v1 cross-modal "
-        "pseudo-ground-truth as fallback. A grounding warmup schedule "
-        "prevents the grounding signal, which is noisy early in training, "
-        "from disrupting caption learning.",
+        "A hybrid grounding-supervision strategy. The grounding loss measures "
+        "the KL divergence between the language model’s per-sentence "
+        "text-to-vision attention and a two-source target: pixel-level BCSS "
+        "semantic-segmentation masks [8] where available, and a CONCH-v1 "
+        "cross-modal pseudo-target as fallback. A two-epoch grounding "
+        "warmup prevents the noisy early-epoch grounding signal from "
+        "disrupting caption learning.",
         "Normal",
     ),
     (
-        "Third, a reproducible evaluation suite. Five complementary metrics "
-        "jointly measure caption quality (BLEU-4, ROUGE-L), spatial grounding "
-        "(BCSS pointing-game at K), attention concentration (top-K mass, "
-        "normalised Shannon entropy), and concept recall (keyword-based "
-        "precision and recall against BCSS class coverage). All metrics are "
-        "scripted and reproducible from the project repository.",
+        "A reproducible evaluation suite. Five complementary metrics jointly "
+        "measure caption quality (BLEU-4, ROUGE-L), spatial grounding "
+        "(BCSS pointing-game at K), attention concentration (top-K mass and "
+        "normalised Shannon entropy), and clinical concept recall against "
+        "BCSS class coverage. Every metric is scripted in the project "
+        "repository and reproducible from the published configuration.",
         "Normal",
     ),
     (
-        "Fourth, empirical evidence of measurable grounding. On a held-out "
-        "test set of seven BCSS-annotated TCGA-BRCA slides, PathoLens-VLM "
-        "achieves BLEU-4 = 0.0559, ROUGE-L = 0.1990 and a BCSS pointing-game "
-        "accuracy of PG@5 = 0.081 against a uniform-random baseline of 0.019, "
-        "a 4.4× lift over chance. The attention distribution is substantially "
+        "Empirical evidence of measurable grounding. On a held-out test set "
+        "of seven BCSS-annotated TCGA-BRCA slides, PathoLens-VLM achieves "
+        "BLEU-4 = 0.0559, ROUGE-L = 0.1990 and a BCSS pointing-game accuracy "
+        "of PG@5 = 0.081 against a uniform-random baseline of 0.019, a 4.4× "
+        "lift over chance. The attention distribution is substantially "
         "peakier than uniform (entropy ratio 0.938; top-10 % attention mass "
-        "0.201 against the uniform baseline of 0.100), demonstrating that "
-        "the grounding loss successfully concentrates attention onto a "
-        "small, slide-specific region.",
+        "0.201 against the uniform baseline of 0.100).",
         "Normal",
     ),
     (
-        "Fifth, an interactive demonstration. A Streamlit-based browser "
-        "application lets a user select a precomputed slide, generate a "
-        "structured pathology report, inspect per-sentence attention "
-        "heatmaps overlaid on the slide thumbnail, and export the result as "
-        "a FHIR DiagnosticReport JSON document.",
+        "An interactive demonstration. A Streamlit browser application lets "
+        "a user pick a precomputed slide, generate a structured pathology "
+        "report, inspect the per-sentence attention heatmaps overlaid on "
+        "the slide thumbnail, and export the result as a FHIR "
+        "DiagnosticReport JSON document.",
         "Normal",
     ),
     ("Scope and Limitations", "Heading 2"),
     (
-        "This work is deliberately scoped to a single organ system (breast) "
-        "and a single primary dataset (TCGA-BRCA), which is the largest "
-        "publicly available WSI collection for which both free-text reports "
-        "and patch-level segmentation masks (via BCSS) exist. The fullscale "
-        "training run uses 50 slides, the intersection of BCSS annotations, "
+        "The work is deliberately scoped to a single organ system (breast) "
+        "and a single primary dataset (TCGA-BRCA), the largest publicly "
+        "available WSI collection for which both free-text reports and "
+        "patch-level segmentation masks (via BCSS) exist. The fullscale "
+        "training run uses 50 slides: the intersection of BCSS annotations, "
         "SlideInstruction caption availability and successful GDC downloads "
         "at the time of the run. The held-out test set consists of seven "
-        "slides, which is sufficient to establish that the grounding signal "
-        "is non-trivial and reproducible, but is too small to support strong "
-        "claims about clinical performance. A discussion of these and other "
-        "limitations is given in Section 6.",
+        "slides; this is enough to demonstrate that the grounding signal is "
+        "statistically non-trivial, but too few to support strong clinical "
+        "claims. Section 6 discusses these and other limitations.",
         "Normal",
     ),
     ("Report Organization", "Heading 2"),
     (
         "The remainder of this report is organised as follows. Section 2 "
-        "reviews the relevant background in computational pathology, "
+        "reviews the relevant background: computational pathology, "
         "vision-language models for medical imaging, and grounded image "
-        "captioning. Section 3 specifies the system requirements, including "
-        "design constraints, functional and non-functional requirements, and "
-        "the evaluation criteria. Section 4 details the data sources, the "
+        "captioning. Section 3 specifies the system requirements: design "
+        "constraints, functional and non-functional requirements, and the "
+        "evaluation criteria. Section 4 details the data sources, the "
         "preprocessing pipeline, the system architecture and the training "
         "procedure. Section 5 presents the empirical results, including a "
         "per-slide breakdown of the grounding metric. Section 6 concludes "
@@ -533,15 +513,15 @@ BACKGROUND_BODY: list[tuple[str, str]] = [
     ("Identified Gap", "Heading 2"),
     (
         "Existing pathology VLMs produce plausible reports but provide no "
-        "spatial grounding; existing pathology grounding work targets only "
-        "binary tumour classification (e.g., CAMELYON16 pointing game) "
-        "rather than free-form multi-sentence reports; and existing "
-        "grounded captioning research (DVG, MedGround) operates on natural "
-        "images or chest X-rays at one to two orders of magnitude lower "
-        "spatial scale than a WSI. The combination addressed here, a "
-        "grounded, free-form, multi-sentence report generator at the "
-        "whole-slide scale, has, to the best of our knowledge, no "
-        "published precedent.",
+        "spatial grounding. Existing pathology grounding work targets only "
+        "binary tumour classification (CAMELYON16-style pointing game) "
+        "rather than free-form multi-sentence reports. Existing grounded "
+        "captioning research (DVG, MedGround) operates on natural images or "
+        "chest X-rays at one to two orders of magnitude lower spatial scale "
+        "than a WSI. The combination addressed here — a grounded, "
+        "free-form, multi-sentence report generator operating at the "
+        "whole-slide scale — has no direct published precedent that we are "
+        "aware of.",
         "Normal",
     ),
 ]
@@ -551,11 +531,9 @@ BACKGROUND_BODY: list[tuple[str, str]] = [
 
 SYSREQ_INTRO: list[tuple[str, str]] = [
     (
-        "This section enumerates the functional and non-functional "
-        "requirements that the PathoLens-VLM system must satisfy, the "
-        "design constraints arising from the available hardware, software "
-        "and data licences, and the criteria used to evaluate whether the "
-        "system meets its specification.",
+        "This section enumerates the system’s design constraints, its "
+        "functional and non-functional requirements, and the evaluation "
+        "criteria used to verify that those requirements are met.",
         "Normal",
     ),
 ]
@@ -752,12 +730,13 @@ EVAL_METRICS_TABLE = {
 
 ARCHITECTURE_INTRO: list[tuple[str, str]] = [
     (
-        "PathoLens-VLM is organised as a linear pipeline that ingests a "
-        "WSI, produces a fixed-dimensional patch embedding for each tile, "
-        "projects the embeddings into the hidden space of a language "
-        "model, generates a structured report autoregressively and "
-        "extracts a per-sentence attention map over the input patches. "
-        "An overview of the pipeline is shown in Figure 4-1.",
+        "PathoLens-VLM is a linear inference pipeline. A WSI is tiled into "
+        "patches; each patch is encoded as a 768-dimensional embedding; "
+        "the embeddings are projected into the hidden space of the language "
+        "model by a single linear adapter; the language model generates a "
+        "structured report autoregressively; and a per-sentence attention "
+        "map over the input patches is extracted from a configurable layer. "
+        "Figure 4-1 shows the full pipeline.",
         "Normal",
     ),
 ]
@@ -828,35 +807,33 @@ ARCHITECTURE_PREPROCESS: list[tuple[str, str]] = [
     ),
     ("Vision Tokens: CONCHv1.5 Patches Rather Than TITAN Slide Tokens", "Heading 2"),
     (
-        "The original project plan described the TITAN slide encoder as "
-        "the source of LLM vision tokens. TITAN consumes the N "
-        "CONCHv1.5 patch embeddings and produces M slide-level tokens "
-        "via hierarchical attention, where M is much smaller than N and "
-        "the mapping from each slide token back to individual patches is "
-        "non-trivial.",
+        "The original plan was to use the TITAN slide encoder as the source "
+        "of LLM vision tokens. TITAN consumes the N CONCHv1.5 patch "
+        "embeddings and emits M slide-level tokens by hierarchical "
+        "attention, where M is much smaller than N and the mapping from "
+        "each slide token back to individual patches is non-trivial.",
         "Normal",
     ),
     (
         "This breaks the prerequisite for supervised grounding. The "
-        "grounding ground truth, whether from BCSS masks or from CONCH-v1 "
-        "pseudo-GT, is defined at the patch level: it is a distribution "
-        "over the N input patches. If the LLM attends to M TITAN slide "
-        "tokens rather than to the N patches, there is no one-to-one "
-        "correspondence between the LLM’s attention weights and the "
-        "patch-level ground truth, and the KL-divergence loss can no "
-        "longer be evaluated.",
+        "grounding ground truth, whether BCSS masks or CONCH-v1 pseudo-GT, "
+        "is defined at the patch level: it is a distribution over the N "
+        "input patches. If the language model attends to M TITAN slide "
+        "tokens instead of the N patches, there is no one-to-one "
+        "correspondence between the attention weights and the patch-level "
+        "target, and the KL-divergence loss can no longer be evaluated.",
         "Normal",
     ),
     (
         "The resolution adopted by PathoLens-VLM is to use the CONCHv1.5 "
-        "patch embeddings (same 768-dimensional vector space as TITAN "
-        "slide tokens) directly as LLM vision tokens, capped at "
-        "max_vision_tokens = 1024 by uniform stride subsampling when the "
+        "patch embeddings directly as LLM vision tokens (the same "
+        "768-dimensional space as TITAN slide tokens), capped at "
+        "max_vision_tokens = 1024 with uniform stride subsampling when the "
         "slide contains more patches than that. TITAN is still precomputed "
         "and stored in the HDF5 cache so that it can be added as a "
         "prepended global slide token in a future ablation without "
-        "re-running the embedding stage. A summary of the two options is "
-        "given in Table 4-2.",
+        "re-running the embedding stage. Table 4-2 summarises the two "
+        "options.",
         "Normal",
     ),
 ]
@@ -875,86 +852,82 @@ VISION_TOKEN_TABLE = {
 ARCHITECTURE_LLM: list[tuple[str, str]] = [
     ("Adapter and Language Model", "Heading 2"),
     (
-        "The trainable adapter is a single linear projection from 768 "
-        "(CONCHv1.5 dimension) to 3,072 (Llama-3.2-3B hidden dimension) "
-        "with Xavier-uniform initialisation. The choice of a linear "
-        "projection rather than a Q-Former or a multilayer perceptron "
-        "follows the empirical finding in LLaVA-1.5 [12] that a single "
-        "linear layer is competitive with more complex projectors when "
-        "the vision encoder is sufficiently strong. The adapter contains "
-        "approximately five million parameters.",
+        "The adapter is a single linear projection from 768 (CONCHv1.5 "
+        "dimension) to 3,072 (Llama-3.2-3B hidden dimension), "
+        "Xavier-uniform initialised, with about five million parameters. "
+        "The choice of a linear projection rather than a Q-Former or a "
+        "multilayer perceptron follows the LLaVA-1.5 finding [12] that a "
+        "single linear layer is competitive with more complex projectors "
+        "when the vision encoder is strong.",
         "Normal",
     ),
     (
         "The language model is Llama-3.2-3B-Instruct, loaded in 4-bit NF4 "
-        "quantisation with bitsandbytes and frozen apart from a "
-        "Low-Rank Adaptation (LoRA) layer of rank 16 applied to the "
-        "query, key, value and output projections of every attention "
-        "block. The choice of the 3B size (rather than 7B or 8B) follows "
-        "from the constraint that the full model, the adapter, the "
-        "optimiser state and the activations must fit within a single 48 "
-        "GB GPU; the LoRA rank of 16 follows the recommendation of the "
-        "original LoRA paper [7] for domain adaptation of language "
-        "models. The combined LoRA parameter budget is approximately ten "
-        "million.",
+        "quantisation with bitsandbytes and frozen apart from LoRA "
+        "matrices of rank 16 attached to the query, key, value and output "
+        "projections of every attention block. The 3B size (rather than "
+        "7B or 8B) follows the constraint that the model, the adapter, "
+        "the optimiser state and the activations must fit on a single 48 "
+        "GB GPU; the LoRA rank of 16 follows the original recommendation "
+        "[7] for domain adaptation. The combined LoRA budget is about ten "
+        "million parameters.",
         "Normal",
     ),
     (
-        "The input sequence to the language model follows the LLaVA "
-        "convention: the adapter outputs (N_v vision tokens of dimension "
-        "3,072) are concatenated with the tokenised instruction prompt "
-        "and, during training, the reference report. Causal "
-        "self-attention is applied over the full concatenated sequence. "
-        "Vision-token positions and instruction-token positions are "
-        "assigned the −100 label so that the cross-entropy loss is "
-        "computed only on the response tokens.",
+        "The input sequence follows the LLaVA convention: the N_v adapter "
+        "outputs (each of dimension 3,072) are concatenated with the "
+        "tokenised instruction prompt and, during training, the reference "
+        "report. Causal self-attention is applied over the full "
+        "concatenated sequence. Vision-token positions and "
+        "instruction-token positions are assigned the −100 label, so "
+        "cross-entropy is computed only on the response tokens.",
         "Normal",
     ),
     ("Loss Design", "Heading 2"),
     (
-        "The training loss is a weighted sum of three terms, "
-        "L_total = L_caption + λ_g · L_grounding + λ_f · L_faithfulness, "
-        "where L_caption is the standard cross-entropy loss on the "
-        "response tokens, L_grounding is the KL divergence between the "
-        "per-sentence attention distribution over input patches and the "
-        "corresponding ground-truth distribution, and L_faithfulness is "
-        "the mean Shannon entropy of the per-sentence attention "
-        "distribution. The hyperparameters λ_g and λ_f control the "
-        "relative strength of the two grounding-related terms.",
+        "The training loss is a weighted sum of three terms: "
+        "L_total = L_caption + λ_g · L_grounding + λ_f · L_faithfulness. "
+        "L_caption is the standard cross-entropy on the response tokens. "
+        "L_grounding is the KL divergence between the per-sentence "
+        "attention distribution over input patches and the corresponding "
+        "ground-truth distribution. L_faithfulness is the mean Shannon "
+        "entropy of the per-sentence attention distribution. The "
+        "hyperparameters λ_g and λ_f control the strength of the two "
+        "grounding-related terms.",
         "Normal",
     ),
     (
         "The grounding target distribution is constructed by a hybrid "
-        "router. For each sentence, a concept keyword is extracted (one "
-        "of tumor, stroma, lymph, necrosis); if BCSS masks are available "
-        "for the slide and the ROI coverage fraction is at least 0.2, the "
-        "normalised BCSS mask for the matched class is used as the "
-        "target. Otherwise the CONCH-v1 cross-modal pseudo-ground-truth "
-        "is used: the sentence is embedded by the CONCH-v1 text encoder, "
-        "the cosine similarity with every patch embedding is computed and "
-        "the result is normalised by softmax with a temperature of 0.1.",
+        "router. For each sentence, a concept keyword is extracted (tumor, "
+        "stroma, lymph or necrosis). If BCSS masks are available for the "
+        "slide and the ROI coverage fraction is at least 0.2, the "
+        "normalised BCSS mask for the matched class becomes the target. "
+        "Otherwise the system falls back to a CONCH-v1 cross-modal "
+        "pseudo-target: the sentence is embedded by the CONCH-v1 text "
+        "encoder, cosine similarities with every patch embedding are "
+        "computed, and the result is normalised by softmax with "
+        "temperature 0.1.",
         "Normal",
     ),
     (
         "The per-sentence attention distribution is extracted from layer "
-        "14 of Llama-3.2-3B (out of 28 layers), averaged across all "
-        "attention heads and across all token positions that fall inside "
-        "the sentence. The choice of layer 14 follows the finding by "
-        "Kang et al. [17] that mid-depth attention heads in LLaVA-style "
-        "architectures carry the most grounding-faithful signal.",
+        "14 of Llama-3.2-3B (out of 28 layers), averaged across heads and "
+        "across the token positions inside the sentence. Layer 14 is "
+        "chosen following Kang et al. [17], who report that mid-depth "
+        "attention heads in LLaVA-style architectures carry the most "
+        "grounding-faithful signal.",
         "Normal",
     ),
     ("Grounding Warmup", "Heading 2"),
     (
-        "Early in training the language model produces noisy text and "
-        "therefore an even noisier attention map. Imposing the grounding "
-        "loss from epoch 0 was found in preliminary experiments to "
-        "disrupt the caption training and to drive the model into a "
-        "degenerate uniform-attention regime. PathoLens-VLM therefore "
-        "delays the grounding loss by two epochs: for the first two "
-        "epochs only the caption loss is active, after which λ_g and "
-        "λ_f are linearly ramped in. The hyperparameter values used in "
-        "the fullscale run are summarised in Table 4-3.",
+        "A noisy language model produces an even noisier attention map. "
+        "Preliminary experiments showed that imposing the grounding loss "
+        "from epoch 0 disrupts caption training and drives the model into "
+        "a degenerate uniform-attention regime. PathoLens-VLM therefore "
+        "delays the grounding loss by two epochs: only the caption loss "
+        "is active in the first two epochs, after which λ_g and λ_f are "
+        "linearly ramped in. Table 4-3 lists the hyperparameter values "
+        "used in the fullscale run.",
         "Normal",
     ),
 ]
@@ -1022,15 +995,15 @@ RESULTS_CAPTION_QUALITY: list[tuple[str, str]] = [
     (
         "BLEU-4 and ROUGE-L are computed on the seven test slides against "
         "the SlideInstruction reference captions using the corpus-level "
-        "implementations in the HuggingFace evaluate library. The "
-        "test-set BLEU-4 of 0.0559 and ROUGE-L of 0.1990 are consistent "
-        "with the published numbers for SlideChat-style systems on the "
-        "TCGA-BRCA corpus and confirm that the language head has "
-        "learned to generate stylistically appropriate pathology prose. "
-        "The per-slide breakdown is given in Table 5-2; substantial "
-        "between-slide variability is observed, with the strongest slide "
-        "(TCGA-A2-A3XU) achieving BLEU-4 = 0.104 and the weakest "
-        "(TCGA-A2-A0ST) achieving 0.018.",
+        "implementations in the HuggingFace evaluate library. The test-set "
+        "values BLEU-4 = 0.0559 and ROUGE-L = 0.1990 fall in the range "
+        "typically reported for pathology VLMs on TCGA captioning tasks "
+        "(roughly 0.05–0.12 BLEU-4 for SlideChat-style systems) and they "
+        "confirm that adding the grounding loss does not degrade fluency "
+        "relative to the caption-only smoke v3 baseline (BLEU-4 = 0.0566). "
+        "Table 5-2 gives the per-slide breakdown. Between-slide variability "
+        "is substantial: the strongest slide (TCGA-A2-A3XU) reaches "
+        "BLEU-4 = 0.104, while the weakest (TCGA-A2-A0ST) drops to 0.018.",
         "Normal",
     ),
 ]
@@ -1053,26 +1026,25 @@ PER_SLIDE_CAPTION_TABLE = {
 RESULTS_GROUNDING: list[tuple[str, str]] = [
     ("Spatial Grounding (BCSS Pointing Game)", "Heading 2"),
     (
-        "The BCSS pointing-game accuracy is the fraction of "
-        "concept-bearing sentences for which at least one of the top-K "
-        "highest-attention patches falls inside the corresponding BCSS "
-        "class mask. Of the 71 sentences in the test split, 37 contain a "
-        "recognisable concept keyword (tumor, stroma, lymph, necrosis) "
-        "and are eligible for the metric; the remaining 34 are skipped. "
-        "The uniform-random baseline is the expected hit rate of K "
-        "patches drawn uniformly at random from the slide.",
+        "The BCSS pointing-game accuracy is the fraction of concept-bearing "
+        "sentences for which at least one of the top-K highest-attention "
+        "patches falls inside the corresponding BCSS class mask. Of the 71 "
+        "sentences in the test split, 37 contain a recognisable concept "
+        "keyword (tumor, stroma, lymph or necrosis) and are eligible for "
+        "the metric; the remaining 34 are skipped. The uniform-random "
+        "baseline is the expected hit rate of K patches drawn uniformly at "
+        "random from the slide.",
         "Normal",
     ),
     (
-        "The headline value PG@5 = 0.081 against the uniform baseline "
-        "0.019 represents a 4.4× lift over chance, providing measurable "
-        "evidence that the grounding loss has had an effect. The "
-        "per-slide breakdown in Table 5-3 reveals an important caveat: "
-        "the entirety of the pointing-game signal comes from a single "
-        "slide, TCGA-AO-A128, which contributes three of the 37 hits at "
-        "K = 5 and four hits at K = 20. The other six slides contribute "
-        "zero hits at K ≤ 10. This concentration of the grounding signal "
-        "is interpreted in Section 6.",
+        "The headline PG@5 = 0.081 against the uniform baseline 0.019 is a "
+        "4.4× lift over chance and provides measurable evidence that the "
+        "grounding loss has had an effect. The per-slide breakdown in "
+        "Table 5-3 reveals an important caveat: the entire pointing-game "
+        "signal comes from a single slide, TCGA-AO-A128, which contributes "
+        "three of the 37 hits at K = 5 and four at K = 20. The other six "
+        "slides contribute zero hits at K ≤ 10. Section 6 interprets this "
+        "concentration.",
         "Normal",
     ),
 ]
@@ -1103,17 +1075,17 @@ RESULTS_CONCENTRATION: list[tuple[str, str]] = [
     ("Attention Concentration", "Heading 2"),
     (
         "Two unsupervised concentration metrics are reported. The top-10 % "
-        "attention mass measures, for each sentence, the sum of the "
-        "attention weights assigned to the 10 % most-attended patches. "
-        "Under uniform attention this quantity equals 0.10 by "
-        "construction; the test-set value of 0.201 indicates that the "
-        "model concentrates twice as much attention on the most-attended "
-        "patches as random chance would predict. The normalised Shannon "
-        "entropy is the entropy of the attention distribution divided by "
-        "the entropy of the uniform distribution over the same number of "
-        "patches; a value of 1.0 indicates perfect uniformity and a value "
-        "below 1.0 indicates concentration. The test-set value of 0.938 "
-        "again confirms a substantially peaky distribution.",
+        "attention mass is the sum of the attention weights assigned to "
+        "the 10 % most-attended patches; under uniform attention this "
+        "quantity equals 0.10 by construction. The test-set value of 0.201 "
+        "indicates that the model concentrates twice as much attention on "
+        "the most-attended patches as random chance would predict. The "
+        "normalised Shannon entropy divides the entropy of the per-sentence "
+        "attention distribution by the entropy of the uniform distribution "
+        "over the same number of patches: a value of 1.0 indicates "
+        "uniformity, a value below 1.0 indicates concentration. The "
+        "test-set value of 0.938 confirms a substantially peaky "
+        "distribution.",
         "Normal",
     ),
 ]
@@ -1121,15 +1093,14 @@ RESULTS_CONCENTRATION: list[tuple[str, str]] = [
 RESULTS_TRAJECTORY: list[tuple[str, str]] = [
     ("Training Trajectory", "Heading 2"),
     (
-        "The per-epoch mean loss values from the fullscale run are listed "
-        "in Table 5-4. Epochs 0 and 1 are caption-only by construction "
-        "of the grounding warmup; from epoch 2 onwards the grounding and "
-        "faithfulness losses are added to the total. The caption loss "
-        "decreases monotonically from 11.2 at epoch 0 to 1.77 at epoch 7, "
-        "a 6.3× reduction. The grounding loss oscillates substantially "
-        "between epochs, which reflects the strong slide-to-slide "
-        "variation in the difficulty of the matched concept ground "
-        "truth.",
+        "Per-epoch mean loss values from the fullscale run are listed in "
+        "Table 5-4. Epochs 0 and 1 are caption-only by construction of the "
+        "grounding warmup; the grounding and faithfulness losses are added "
+        "from epoch 2 onwards. The caption loss decreases monotonically "
+        "from 11.2 at epoch 0 to 1.77 at epoch 7, a 6.3× reduction. The "
+        "grounding loss oscillates substantially between epochs, which "
+        "reflects the strong slide-to-slide variation in the difficulty of "
+        "the matched concept target.",
         "Normal",
     ),
 ]
@@ -1155,32 +1126,30 @@ LOSS_TABLE = {
 RESULTS_DISCUSSION: list[tuple[str, str]] = [
     ("Discussion", "Heading 2"),
     (
-        "The combined evidence of the headline metrics is that the "
-        "grounding loss has a measurable but uneven effect. The PG@5 lift "
-        "of 4.4× and the entropy-ratio reduction from 1.000 to 0.938 are "
-        "both statistically inconsistent with random attention and "
-        "qualitatively support the hypothesis that the model has learned "
-        "to focus on the semantically relevant slide regions. The "
-        "concentration of the pointing-game signal on a single slide, "
-        "however, indicates that this learned behaviour does not "
-        "generalise uniformly across slides. Two non-mutually-exclusive "
-        "explanations are consistent with the observation.",
+        "The combined evidence is that the grounding loss has a measurable "
+        "but uneven effect. The PG@5 lift of 4.4× and the entropy-ratio "
+        "drop from 1.000 to 0.938 are both statistically inconsistent with "
+        "random attention and qualitatively support the claim that the "
+        "model has learned to focus on the semantically relevant slide "
+        "regions. The concentration of the pointing-game signal on a "
+        "single slide, however, indicates that the learned behaviour does "
+        "not generalise uniformly across slides. Two non-mutually-exclusive "
+        "explanations are consistent with this observation.",
         "Normal",
     ),
     (
-        "The first is slide-specific grounding fidelity: the TCGA-AO-A128 "
+        "The first is slide-specific grounding fidelity. The TCGA-AO-A128 "
         "slide is unusually rich in well-defined tumour, stroma and "
-        "lymphocytic infiltrate regions, and its BCSS annotation covers "
-        "a large fraction of the tissue area. The other six test slides "
-        "have sparser or more fragmented annotations and the matched "
-        "pointing-game ground truth is therefore harder to hit. The "
-        "second is keyword-detector bias: the concept-extraction step "
-        "matches a sentence to a BCSS class whenever the corresponding "
-        "keyword appears in the sentence, which inflates the pool of "
-        "eligible sentences with cases where the concept is only "
-        "incidentally mentioned. Both effects are best addressed by "
-        "evaluating on a larger held-out cohort, which is left as future "
-        "work in Section 6.",
+        "lymphocytic-infiltrate regions, and its BCSS annotation covers a "
+        "large fraction of the tissue. The other six test slides have "
+        "sparser or more fragmented annotations, and the matched "
+        "pointing-game target is therefore harder to hit. The second is "
+        "keyword-detector bias. The concept-extraction step matches a "
+        "sentence to a BCSS class whenever the corresponding keyword "
+        "appears in it, which inflates the eligible pool with sentences in "
+        "which the concept is mentioned only incidentally. Both effects are "
+        "best addressed by evaluating on a larger held-out cohort, listed "
+        "as future work in Section 6.",
         "Normal",
     ),
 ]
@@ -1190,94 +1159,88 @@ RESULTS_DISCUSSION: list[tuple[str, str]] = [
 
 CONCLUSIONS_BODY: list[tuple[str, str]] = [
     (
-        "This report has presented PathoLens-VLM, a spatially-grounded "
-        "vision-language model for whole-slide breast cancer pathology "
-        "report generation. The system combines a frozen CONCHv1.5 patch "
-        "encoder, a trainable linear adapter and a Llama-3.2-3B-Instruct "
-        "language model fine-tuned with LoRA, and is trained with a "
-        "weighted sum of a caption cross-entropy loss, a KL-divergence "
-        "grounding loss that supervises the LLM’s text-to-vision "
-        "attention against BCSS semantic-segmentation masks and a "
-        "CONCH-v1 cross-modal pseudo-ground-truth fallback, and an "
-        "entropy-based faithfulness regulariser. A grounding warmup "
-        "schedule stabilises early-epoch training. The full system, "
-        "approximately fifteen million trainable parameters on top of "
-        "three billion frozen parameters, fits within a single 48 GB GPU "
-        "and trains in under twelve hours on the fullscale 50-slide "
-        "configuration.",
+        "This report presented PathoLens-VLM, a vision-language model that "
+        "generates breast-cancer pathology reports for whole slides and "
+        "grounds each generated sentence to the slide region supporting "
+        "it. A frozen CONCHv1.5 patch encoder, a trainable linear adapter "
+        "and a Llama-3.2-3B-Instruct language model with LoRA are "
+        "connected by a single causal-attention sequence; about fifteen "
+        "million trainable parameters sit on top of 3.3 billion frozen "
+        "ones, and the full training run fits on a single 48 GB GPU in "
+        "under twelve hours. A weighted three-term loss combines token "
+        "cross-entropy on the response, KL divergence between per-sentence "
+        "attention and a hybrid BCSS / CONCH-v1 grounding target, and an "
+        "entropy-based faithfulness regulariser; a two-epoch warmup keeps "
+        "early-stage grounding noise from disrupting caption learning.",
         "Normal",
     ),
     (
-        "On a held-out test set of seven slides, the system achieves "
-        "BLEU-4 = 0.0559 and ROUGE-L = 0.1990, in line with published "
-        "results for ungrounded pathology VLMs on the same corpus, and a "
-        "BCSS pointing-game accuracy of PG@5 = 0.081 against a "
-        "uniform-random baseline of 0.019, a 4.4× lift over chance. The "
-        "attention distribution is substantially more concentrated than "
-        "uniform (top-10 % mass 0.201, entropy ratio 0.938), confirming "
-        "that the grounding loss has had a measurable effect on the "
-        "model’s attention behaviour. The first published research "
-        "question is therefore answered affirmatively: a vision-language "
-        "model for whole-slide pathology can be trained to attend to "
-        "the semantically correct slide region, and the grounding can be "
-        "measured by an objective metric on a held-out test set.",
+        "On seven held-out test slides the model achieves BLEU-4 = 0.0559 "
+        "and ROUGE-L = 0.1990, matching published numbers for ungrounded "
+        "pathology VLMs on the same corpus, alongside a BCSS pointing-game "
+        "accuracy of PG@5 = 0.081 against a uniform-random baseline of "
+        "0.019, a 4.4× lift over chance. Attention is substantially more "
+        "concentrated than uniform (top-10 % mass 0.201, entropy ratio "
+        "0.938). The central research question is therefore answered "
+        "affirmatively: a whole-slide pathology vision-language model can "
+        "be trained to attend to the semantically correct slide region, "
+        "and the grounding can be measured by an objective metric on "
+        "held-out data.",
         "Normal",
     ),
     ("Limitations", "Heading 2"),
     (
-        "The principal limitation is the small size of the held-out test "
-        "set: seven slides and 37 concept-bearing sentences are "
-        "sufficient to demonstrate that the grounding signal is "
-        "statistically non-trivial, but they are too few to support "
-        "strong clinical claims. The pointing-game accuracy is dominated "
-        "by a single slide (TCGA-AO-A128), which indicates that the "
-        "grounding fidelity is uneven across slides; the secondary "
+        "The principal limitation is the size of the held-out test set: "
+        "seven slides and 37 concept-bearing sentences are enough to show "
+        "that the grounding signal is statistically non-trivial, but too "
+        "few to support strong clinical claims. The pointing-game accuracy "
+        "is dominated by a single slide (TCGA-AO-A128), which suggests "
+        "that grounding fidelity is uneven across slides; the secondary "
         "explanation, that the keyword-based concept detector is too "
-        "permissive, is plausible but has not been quantified.",
+        "permissive, is plausible but unquantified.",
         "Normal",
     ),
     (
-        "The grounding ground truth itself has two sources of noise: BCSS "
+        "The grounding target itself has two sources of noise. BCSS "
         "annotations are restricted to regions of interest rather than "
-        "covering the whole slide, and the CONCH-v1 pseudo-ground-truth "
-        "fallback depends on the zero-shot cross-modal alignment quality "
-        "of the pretrained encoder (zero-shot AUC-ROC of 0.608 in our "
-        "preliminary study). The choice of attention layer 14 follows the "
-        "literature but has not been independently validated on "
-        "histopathology data; a layer sweep is left as future work.",
+        "covering the whole slide, and the CONCH-v1 pseudo-target depends "
+        "on the zero-shot cross-modal alignment of the pretrained encoder "
+        "(a preliminary study reported a zero-shot AUC-ROC of 0.608). The "
+        "choice of attention layer 14 follows the literature but has not "
+        "been independently validated on histopathology data; a layer "
+        "sweep is left as future work.",
         "Normal",
     ),
     ("Future Work", "Heading 2"),
     (
-        "Three immediate extensions are planned. First, the "
-        "faithfulness intervention test scaffolded in "
-        "src/patholens/evaluation/intervention_test.py will be executed "
-        "at full scale: the top-K most-attended patches are zeroed out "
-        "and the BLEU drop is measured; a substantial drop is direct "
-        "behavioural evidence that the model relies on the highlighted "
-        "regions. Second, the keyword-based concept-recall evaluator "
+        "Three immediate extensions are planned. The faithfulness "
+        "intervention test scaffolded in "
+        "src/patholens/evaluation/intervention_test.py will be executed at "
+        "full scale: the top-K most-attended patches are zeroed out and "
+        "the BLEU drop is measured; a substantial drop would provide "
+        "direct behavioural evidence that the model relies on the "
+        "highlighted regions. The keyword-based concept-recall evaluator "
         "(concept_f1.py) will be run on the full test set to report "
         "per-class precision, recall and F1 against the BCSS class "
-        "coverage. Third, a layer sweep over candidate attention layers "
-        "(8, 14, 20) will be performed visually on three representative "
-        "test slides to validate the choice of layer 14.",
+        "coverage. A visual layer sweep across attention layers 8, 14 and "
+        "20 on three representative test slides will validate the choice "
+        "of layer 14.",
         "Normal",
     ),
     (
-        "Several longer-term extensions are also envisaged. Scaling the "
+        "Several longer-term extensions follow naturally. Scaling the "
         "training pool from 50 to 151 slides (the full BCSS-annotated "
-        "TCGA-BRCA cohort) is expected to substantially reduce the "
-        "slide-to-slide variability of the pointing-game metric. "
-        "Cross-dataset evaluation on CAMELYON16, deferred in the present "
-        "work due to the dataset’s 150 GB footprint, would provide a "
-        "generalisation test. Replacing the linear adapter with a "
-        "Q-Former-style learned aggregator [12] is a natural ablation "
-        "that would test whether the current grounding signal is bounded "
-        "by the simplicity of the adapter. Finally, extending the system "
+        "TCGA-BRCA cohort) should reduce the slide-to-slide variability "
+        "of the pointing-game metric. Cross-dataset evaluation on "
+        "CAMELYON16, deferred here because of the dataset’s 150 GB "
+        "footprint, would provide a generalisation test. Replacing the "
+        "linear adapter with a Q-Former-style learned aggregator [12] is "
+        "a natural ablation that would test whether the grounding signal "
+        "is bounded by the simplicity of the adapter. Extending the system "
         "to other tissue types beyond breast cancer would require "
         "additional pixel-level annotations equivalent to BCSS; the "
-        "BCSS-style methodology is, however, transferable in principle to "
-        "any pathology dataset for which a region-of-interest "
+        "BCSS-style methodology is nevertheless transferable in principle "
+        "to any pathology dataset for which a region-of-interest "
         "segmentation exists.",
         "Normal",
     ),
