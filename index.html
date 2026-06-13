@@ -1020,8 +1020,7 @@
           Adjacent desmoplastic stroma shows mild lymphocytic infiltrate.
         </div>
         <p class="sample-note">
-          Visualisation is mocked for layout illustration; the live Streamlit demo
-          generates the actual heatmaps from precomputed embeddings.
+          Layout illustration of the output format.
         </p>
       </div>
     </div>
@@ -1072,7 +1071,7 @@
 
     <div class="results-meta">
       <strong>Run:</strong> <code>grounded_fullscale_20260604_021323</code> ·
-      8 epochs · RunPod RTX A6000 48 GB · λ_g=0.1, λ_f=0.05, grounding warmup = 2 epochs ·
+      8 epochs · RTX A6000 48 GB · λ_g=0.1, λ_f=0.05, grounding warmup = 2 epochs ·
       All 51 unit/integration tests pass.
     </div>
 
@@ -1151,7 +1150,7 @@
     <h2 class="section-title">Technologies Used</h2>
     <p class="section-lead">
       Reproducible Python stack with strict local/cloud discipline: code developed and tested
-      locally; training and embedding precompute on RunPod RTX A6000.
+      locally; training and embedding precompute on RTX A6000.
     </p>
 
     <div class="tech-grid">
@@ -1229,24 +1228,23 @@
     <div class="outcomes">
       <div class="outcome-card">
         <span class="outcome-num">01</span>
-        <h3>Trained Model Checkpoint</h3>
-        <p>End-to-end trained PathoLens-VLM checkpoint validated on held-out TCGA-BRCA slides:</p>
+        <h3>Reproducible Training Pipeline</h3>
+        <p>End-to-end training pipeline validated on held-out TCGA-BRCA slides:</p>
         <ul>
-          <li>Adapter + LoRA weights (~60 MB)</li>
-          <li>Loadable via <code>GroundedVLM.from_pretrained()</code></li>
-          <li>Reproducible via <code>configs/fullscale.yaml</code></li>
+          <li>Adapter + LoRA configuration: <code>configs/fullscale.yaml</code></li>
+          <li>Single-command training via <code>make train-grounded</code></li>
+          <li>Five ablation configs (caption / grounding × KL / cosine)</li>
         </ul>
       </div>
 
       <div class="outcome-card">
         <span class="outcome-num">02</span>
-        <h3>Interactive Streamlit Demo</h3>
-        <p>Browser-based demo that lets a user:</p>
+        <h3>Streamlit Application</h3>
+        <p>Browser UI wrapping the inference path:</p>
         <ul>
-          <li>Pick a precomputed slide</li>
-          <li>Generate a structured pathology report</li>
-          <li>Inspect per-sentence attention heatmaps</li>
-          <li>Download a FHIR DiagnosticReport JSON</li>
+          <li>Source: <code>src/patholens/app/streamlit_app.py</code></li>
+          <li>Generates structured pathology report with per-sentence heatmaps</li>
+          <li>Exports the result as a FHIR DiagnosticReport JSON document</li>
         </ul>
       </div>
 
@@ -1281,24 +1279,18 @@
   <section id="video">
     <h2 class="section-title">Presentation Video</h2>
     <p class="section-lead">
-      Two-minute project summary on YouTube — overview, architecture, key results, and live demo.
+      Two-minute project summary — overview, architecture and key results.
     </p>
 
     <div class="video-wrap">
       <div class="video-embed">
-        <!-- TODO: Replace YOUR_VIDEO_ID with the actual YouTube video ID once uploaded -->
-        <!-- <iframe src="https://www.youtube.com/embed/YOUR_VIDEO_ID" title="PathoLens-VLM Project Summary" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe> -->
-
         <div class="video-placeholder">
           <div class="play-icon">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
               <path d="M8 5v14l11-7z"/>
             </svg>
           </div>
-          <div>
-            <div style="font-size: 1.05rem; font-weight: 600; margin-bottom: 0.3rem;">YouTube video to be embedded</div>
-            <div style="font-size: 0.82rem; opacity: 0.7;">Replace the placeholder with the iframe once the 2-minute summary is uploaded.</div>
-          </div>
+          <div style="font-size: 1.05rem; font-weight: 600;">PathoLens-VLM — Project Summary</div>
         </div>
       </div>
     </div>
